@@ -1,0 +1,2439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sample Tracking Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- SheetJS with Styling Support -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#6366f1', 
+                        primaryHover: '#4f46e5', 
+                        secondary: '#64748b',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#f43f5e', 
+                    },
+                    boxShadow: {
+                        'soft': '0 10px 40px -10px rgba(0,0,0,0.04)',
+                        'glow': '0 0 20px rgba(99, 102, 241, 0.2)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 20px; border: 2px solid #f8fafc; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .modal-enter { animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+        }
+
+        /* Sticky Table Header */
+        #table-head th {
+            position: sticky;
+            top: 0;
+            background-color: #f8fafc; 
+            z-index: 30;
+            white-space: nowrap; 
+        }
+        
+        #table-head th::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            height: 1px;
+            background-color: #f1f5f9; 
+        }
+        
+        #table-head tr {
+            background-color: transparent !important;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: 0.2s;
+        }
+        input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-slate-50/50 text-slate-800 h-screen overflow-hidden flex">
+
+    <!-- Sidebar -->
+    <aside class="w-72 min-w-[18rem] shrink-0 bg-white border-r border-slate-100 flex flex-col hidden md:flex h-full z-20 shadow-[4px_0_24px_rgba(0,0,0,0.02)]">
+        <div class="h-16 flex items-center px-6 border-b border-slate-50 shrink-0">
+            <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center text-white mr-3 shadow-glow">
+                <i class="fa-solid fa-layer-group text-sm"></i>
+            </div>
+            <span class="text-lg font-bold text-slate-900 tracking-tight">CGs Sample<span class="text-primary">Tracking</span></span>
+        </div>
+        
+        <div id="sidebar-scroll-container" class="p-5 flex-1 overflow-y-auto">
+            <p class="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-4 px-3">Production Stages</p>
+            <ul id="stage-list" class="space-y-1.5">
+                <!-- Populated by JS -->
+            </ul>
+        </div>
+        
+        <div class="p-5 border-t border-slate-100 text-[13px] text-slate-400 font-medium flex items-center justify-between shrink-0">
+            <p>&copy; Millennium Furniture</p>
+            <i class="fa-solid fa-leaf text-emerald-400/50"></i>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col h-full relative min-w-0">
+        
+        <!-- Top Navbar -->
+        <header class="h-16 glass border-b border-slate-100/50 flex items-center justify-between px-6 sm:px-8 z-40 sticky top-0 shrink-0">
+            <div class="flex items-center md:hidden">
+                <button class="text-slate-500 hover:text-indigo-600 focus:outline-none p-2 rounded-full hover:bg-indigo-50 transition-colors">
+                    <i class="fa-solid fa-bars text-xl"></i>
+                </button>
+                <span class="ml-3 text-lg font-bold text-slate-900">Sample Tracker</span>
+            </div>
+            
+            <div class="hidden md:block">
+                <h1 id="page-title" class="text-xl font-bold text-slate-800 tracking-tight">Overview</h1>
+            </div>
+
+            <div class="flex items-center space-x-3 sm:space-x-4">
+
+                <!-- Cloud Status -->
+                <div id="cloud-status" class="hidden sm:flex items-center text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-full transition-all shadow-sm">
+                    <i class="fa-solid fa-cloud mr-1.5"></i> Connecting...
+                </div>
+                
+                <!-- Export Excel Button -->
+                <button onclick="exportExcel()" class="bg-indigo-50 text-indigo-600 hover:bg-indigo-500 hover:text-white border border-indigo-200 hover:border-indigo-500 px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center shadow-sm">
+                    <i class="fa-solid fa-file-export mr-2"></i> <span class="hidden sm:inline">Export Excel</span>
+                </button>
+
+                <!-- Import Excel Button -->
+                <button onclick="openImportModal()" class="bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 hover:border-emerald-500 px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center shadow-sm">
+                    <i class="fa-solid fa-file-import mr-2"></i> <span class="hidden sm:inline">Import Excel</span>
+                </button>
+
+                <!-- Notification Bell -->
+                <div class="relative group cursor-pointer hidden sm:block ml-2" id="notification-wrapper">
+                    <div onclick="toggleNotifications()" class="w-9 h-9 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm">
+                        <i class="fa-regular fa-bell text-base"></i>
+                    </div>
+                    <span id="notification-badge" class="hidden absolute -top-0.5 -right-0.5 bg-danger text-white text-[10px] font-bold h-4 w-4 flex items-center justify-center rounded-full border-2 border-white">0</span>
+
+                    <!-- Dropdown Lịch sử Import -->
+                    <div id="notification-dropdown" class="hidden absolute right-0 top-12 w-80 bg-white border border-slate-100 shadow-[0_10px_40px_-10px_rgba(0,0,0,0.2)] rounded-2xl z-50 overflow-hidden flex flex-col cursor-default">
+                        <div class="p-4 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
+                            <h3 class="font-bold text-slate-800 text-sm"><i class="fa-solid fa-clock-rotate-left text-indigo-500 mr-2"></i> Lịch sử Import</h3>
+                            <span id="import-count-badge" class="bg-indigo-100 text-indigo-600 text-[10px] font-bold px-2 py-0.5 rounded-full">0</span>
+                        </div>
+                        <div id="notification-list" class="max-h-[28rem] overflow-y-auto p-3 space-y-2 bg-white">
+                            <!-- JS populates this -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="h-6 w-px bg-slate-200 mx-1"></div>
+                
+                <!-- Auth Section -->
+                <div id="auth-section" class="flex items-center">
+                    <button id="btn-login-trigger" class="bg-slate-900 hover:bg-indigo-600 text-white text-sm font-semibold py-1.5 px-4 sm:py-2 sm:px-5 rounded-full transition-all duration-300 shadow-md hover:shadow-glow hover:-translate-y-0.5">
+                        Log In
+                    </button>
+                    
+                    <div id="user-profile" class="hidden flex items-center space-x-3">
+                        <div class="text-right hidden sm:block">
+                            <p id="user-name-display" class="text-sm font-bold text-slate-900 leading-none">Guest</p>
+                            <p id="user-role-display" class="text-xs text-slate-500 mt-1 font-medium">Observer</p>
+                        </div>
+                        <div class="relative" id="user-profile-wrapper">
+                            <div class="h-10 w-10 rounded-full bg-gradient-to-tr from-indigo-100 to-purple-50 flex items-center justify-center text-indigo-600 font-bold border border-indigo-100 cursor-pointer shadow-sm hover:shadow-md transition-all" onclick="toggleLogoutMenu()">
+                                <i class="fa-solid fa-user text-sm"></i>
+                            </div>
+                            <button id="btn-logout" class="absolute right-0 top-12 hidden bg-white border border-slate-100 shadow-lg rounded-xl text-sm text-danger hover:bg-rose-50 font-medium py-2 px-4 whitespace-nowrap transition-all z-50" onclick="handleLogout()">
+                                <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i>Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Area -->
+        <main class="flex-1 flex flex-col overflow-hidden p-4 sm:p-5 relative z-0">
+            
+            <!-- KPI Cards -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 shrink-0" id="kpi-container">
+                <div id="kpi-card-total" class="bg-white rounded-2xl shadow-soft hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5 transition-all duration-300 border border-slate-100 p-5 flex items-center relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-indigo-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-50 to-indigo-100/50 flex items-center justify-center text-indigo-500 mr-4 relative z-10 border border-indigo-50">
+                        <i id="kpi-icon-total" class="fa-solid fa-box-open text-xl"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <p id="kpi-title-total" class="text-xs text-slate-500 font-medium mb-0.5">Total FG Items</p>
+                        <h3 id="stat-total" class="text-2xl font-extrabold text-slate-800">0</h3>
+                    </div>
+                </div>
+                <div id="kpi-card-progress" class="bg-white rounded-2xl shadow-soft hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5 transition-all duration-300 border border-slate-100 p-5 flex items-center relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-amber-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-50 to-amber-100/50 flex items-center justify-center text-amber-500 mr-4 relative z-10 border border-amber-50">
+                        <i id="kpi-icon-progress" class="fa-solid fa-spinner text-xl"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <p id="kpi-title-progress" class="text-xs text-slate-500 font-medium mb-0.5">In Progress</p>
+                        <h3 id="stat-progress" class="text-2xl font-extrabold text-slate-800">0</h3>
+                    </div>
+                </div>
+                <div id="kpi-card-issues" class="bg-white rounded-2xl shadow-soft hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5 transition-all duration-300 border border-slate-100 p-5 flex items-center relative overflow-hidden group">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-rose-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-50 to-rose-100/50 flex items-center justify-center text-rose-500 mr-4 relative z-10 border border-rose-50">
+                        <i id="kpi-icon-issues" class="fa-solid fa-triangle-exclamation text-xl"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <p id="kpi-title-issues" class="text-xs text-slate-500 font-medium mb-0.5">With Issues</p>
+                        <h3 id="stat-issues" class="text-2xl font-extrabold text-slate-800">0</h3>
+                    </div>
+                </div>
+                <!-- Ready to Assemble Card -->
+                <div id="kpi-card-ready" class="bg-white rounded-2xl shadow-soft hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5 transition-all duration-300 border border-slate-100 p-5 flex items-center relative overflow-hidden group hidden">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-cyan-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-50 to-cyan-100/50 flex items-center justify-center text-cyan-500 mr-4 relative z-10 border border-cyan-50">
+                        <i id="kpi-icon-ready" class="fa-solid fa-hammer text-xl"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <p id="kpi-title-ready" class="text-xs text-slate-500 font-medium mb-0.5">Ready to Assemble</p>
+                        <h3 id="stat-ready" class="text-2xl font-extrabold text-slate-800">0</h3>
+                    </div>
+                </div>
+                <!-- Completed Card -->
+                <div id="kpi-card-completed" class="bg-white rounded-2xl shadow-soft hover:shadow-lg hover:shadow-slate-200/50 hover:-translate-y-0.5 transition-all duration-300 border border-slate-100 p-5 flex items-center relative overflow-hidden group hidden">
+                    <div class="absolute -right-4 -top-4 w-20 h-20 bg-emerald-50 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-500"></div>
+                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100/50 flex items-center justify-center text-emerald-500 mr-4 relative z-10 border border-emerald-50">
+                        <i id="kpi-icon-completed" class="fa-solid fa-check-double text-xl"></i>
+                    </div>
+                    <div class="relative z-10">
+                        <p id="kpi-title-completed" class="text-xs text-slate-500 font-medium mb-0.5">Completed</p>
+                        <h3 id="stat-completed" class="text-2xl font-extrabold text-slate-800">0</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="bg-white rounded-2xl shadow-soft border border-slate-100 flex flex-col flex-1 min-h-0 relative z-10">
+                <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:justify-between sm:items-center bg-white gap-3 shrink-0 relative z-20 rounded-t-2xl">
+                    <h2 class="text-lg font-bold text-slate-800" id="table-title">Tracking Details</h2>
+                    
+                    <!-- Search & Bulk Actions -->
+                    <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <button id="btn-bulk-issue" onclick="attemptBulkIssue()" class="hidden bg-rose-50 text-rose-600 hover:bg-rose-500 hover:text-white border border-rose-200 hover:border-rose-500 px-4 py-2 rounded-full text-sm font-bold transition-all items-center shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-triangle-exclamation mr-2"></i> Báo lỗi (<span id="bulk-issue-count">0</span>)
+                        </button>
+                        <button id="btn-bulk-complete" onclick="attemptBulkComplete()" class="hidden bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-200 hover:border-emerald-500 px-4 py-2 rounded-full text-sm font-bold transition-all items-center shadow-sm whitespace-nowrap">
+                            <i class="fa-solid fa-check-double mr-2"></i> Xác nhận (<span id="bulk-count">0</span>)
+                        </button>
+                        
+                        <div class="relative group" id="search-container">
+                            <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 text-sm group-focus-within:text-indigo-500 transition-colors"></i>
+                            <input type="text" id="search-input" placeholder="Search codes, products..." class="pl-10 pr-4 py-2 text-sm bg-slate-50 border-none rounded-full focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:bg-white transition-all w-full sm:w-64 shadow-inner">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="overflow-auto flex-1 min-h-0 relative z-10 bg-white rounded-b-2xl">
+                    <table class="w-full min-w-max text-left border-collapse">
+                        <thead id="table-head">
+                            <!-- Headers populated dynamically based on view type -->
+                        </thead>
+                        <tbody id="table-body" class="divide-y divide-slate-100/80 text-sm">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Empty State -->
+                <div id="empty-state" class="hidden p-16 text-center flex flex-col items-center justify-center bg-white relative z-10 flex-1 min-h-0 rounded-b-2xl">
+                    <div class="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-4 text-slate-300">
+                        <i class="fa-solid fa-folder-open text-3xl"></i>
+                    </div>
+                    <h3 class="text-slate-800 font-bold text-lg">No data found</h3>
+                    <p class="text-slate-500 text-sm mt-1">There are no active items matching the current filter in this stage.</p>
+                </div>
+            </div>
+            
+        </main>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Import Excel Modal -->
+    <div id="import-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden modal-enter">
+            <div class="p-6 px-8 border-b border-slate-100 flex justify-between items-center bg-emerald-50/30">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mr-3">
+                        <i class="fa-solid fa-file-import text-lg"></i>
+                    </div>
+                    <h2 class="text-xl font-extrabold text-slate-800">Import Master Data</h2>
+                </div>
+                <button onclick="document.getElementById('import-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors shadow-sm">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="p-8">
+                <h3 class="text-sm font-bold text-slate-800 mb-2">Excel File Format Requirements:</h3>
+                <ul class="text-sm text-slate-600 space-y-2 mb-6 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                    <li><i class="fa-solid fa-check text-emerald-500 mr-2"></i> <strong>Deadline:</strong> Có thể thêm cột "DEADLINE" (Định dạng: YYYY-MM-DD hoặc chữ) để set kế hoạch cho mã hàng.</li>
+                    <li><i class="fa-solid fa-check text-emerald-500 mr-2"></i> <strong>Cộng dồn độc lập:</strong> Mã FG Item trùng lặp sẽ được thêm thành dòng mới.</li>
+                    <li><i class="fa-solid fa-check text-emerald-500 mr-2"></i> <strong>Phân loại theo Week:</strong> Đã hỗ trợ cột WEEK ở mọi Sheet để quản lý chi tiết.</li>
+                </ul>
+
+                <div class="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:bg-slate-50 hover:border-indigo-300 transition-colors cursor-pointer group" onclick="document.getElementById('excel-file-input').click()">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-slate-300 group-hover:text-indigo-500 mb-3 transition-colors"></i>
+                    <p class="text-sm font-bold text-slate-700">Click to upload .xlsx file</p>
+                    <p class="text-xs text-slate-400 mt-1">or drag and drop here</p>
+                </div>
+                <input type="file" id="excel-file-input" accept=".xlsx, .xls" class="hidden">
+                
+                <div id="import-loading" class="hidden mt-4 text-center">
+                    <i class="fa-solid fa-circle-notch fa-spin text-indigo-500 text-xl"></i>
+                    <span class="text-sm text-slate-500 font-medium ml-2">Processing Data...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Details Modal -->
+    <div id="details-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-3xl overflow-hidden modal-enter flex flex-col max-h-[90vh]">
+            <div class="p-6 px-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <div>
+                    <h2 class="text-xl font-extrabold text-slate-800" id="details-code">--</h2>
+                    <div class="flex items-center mt-2" id="details-product">--</div>
+                </div>
+                <button class="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors close-details-modal shadow-sm">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="p-8 overflow-y-auto flex-1 bg-slate-50/30">
+                
+                <div id="details-fg-history" class="hidden mb-6"></div>
+
+                <h3 class="text-xs font-extrabold text-slate-400 mb-4 uppercase tracking-widest">Components Routing Progress</h3>
+                <div class="space-y-4" id="details-components">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+            <div class="px-8 py-6 bg-white flex justify-end border-t border-slate-100">
+                <button class="px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-2xl transition-colors close-details-modal border border-slate-200">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden modal-enter border border-white/20 relative">
+            <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+            <div class="p-8 pb-6 text-center">
+                <div class="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mx-auto mb-4">
+                    <i class="fa-solid fa-fingerprint"></i>
+                </div>
+                <h2 class="text-2xl font-extrabold text-slate-800">Welcome Back</h2>
+                <p class="text-sm text-slate-500 mt-2">Select a department to test role permissions.</p>
+            </div>
+            <div class="px-8 space-y-5">
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">Username</label>
+                    <input type="text" id="login-username" value="" class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none text-slate-800 transition-all font-medium">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">Department / Role</label>
+                    <div class="relative">
+                        <select id="login-role" class="w-full appearance-none bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 focus:outline-none text-slate-800 transition-all font-medium">
+                            <option value="Admin">Administrator (All Access)</option>
+                            <option value="Viewer">Viewer (Read Only)</option>
+                            <option value="Lamination">Lamination Dept</option>
+                            <option value="Panel Saw">Panel Saw Dept</option>
+                            <option value="Edge bander">Edge bander Dept</option>
+                            <option value="Foiler">Foiler Dept</option>
+                            <option value="Drill">Drill Dept</option>
+                            <option value="CNC/Heian">CNC/Heian Dept</option>
+                            <option value="Pressing">Pressing Dept</option>
+                            <option value="Wrapping">Wrapping Dept</option>
+                            <option value="Rework">Rework Dept</option>
+                            <option value="Mitering">Mitering Dept</option>
+                        </select>
+                        <i class="fa-solid fa-chevron-down absolute right-5 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none"></i>
+                    </div>
+                </div>
+            </div>
+            <div class="px-8 py-8 mt-4 flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-3 gap-3 sm:gap-0">
+                <button id="btn-close-login" class="w-full sm:w-auto px-6 py-3 text-sm font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-2xl transition-colors">Cancel</button>
+                <button id="btn-submit-login" class="w-full sm:w-auto px-8 py-3 text-sm font-bold text-white bg-slate-900 hover:bg-indigo-600 rounded-2xl transition-all shadow-md hover:shadow-glow">Log In</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit/Update Issue Modal -->
+    <div id="edit-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden modal-enter">
+            <div class="p-6 px-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                <h2 class="text-xl font-extrabold text-slate-800">Report Issue</h2>
+                <button class="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors close-edit-modal shadow-sm">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="p-8 space-y-6">
+                
+                <div class="flex items-center space-x-4 bg-gradient-to-r from-indigo-50/50 to-white p-4 rounded-2xl border border-indigo-100/50">
+                    <div class="w-12 h-12 bg-white rounded-xl flex items-center justify-center font-black text-indigo-600 shadow-[0_2px_10px_rgba(99,102,241,0.1)] border border-indigo-50" id="edit-code-display">
+                        --
+                    </div>
+                    <div>
+                        <p class="text-[10px] text-indigo-400 font-bold uppercase tracking-widest mb-0.5">Editing Product</p>
+                        <p class="text-base font-extrabold text-slate-800" id="edit-product-display">--</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">Issue Description / Báo Lỗi</label>
+                        <textarea id="edit-issue" rows="4" placeholder="Mô tả nội dung lỗi tại đây..." class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm focus:bg-white focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 focus:outline-none text-slate-800 font-medium transition-all resize-none"></textarea>
+                    </div>
+                    <div id="edit-qty-wrapper" class="w-full sm:w-72 flex flex-col hidden">
+                        <label class="block text-sm font-bold text-slate-700 mb-2 ml-1">Chi tiết & Số lượng lỗi</label>
+                        <div id="issue-qty-container" class="flex-1 max-h-[140px] overflow-y-auto space-y-2 pr-1">
+                            <!-- Dynamic inputs -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="px-8 py-6 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center border-t border-slate-100 gap-3">
+                <div class="w-full sm:w-auto">
+                    <button id="btn-clear-edit" class="w-full sm:w-auto px-5 py-2.5 text-sm font-bold text-slate-500 bg-slate-200 hover:bg-emerald-100 hover:text-emerald-700 rounded-2xl transition-colors hidden flex items-center justify-center">
+                        <i class="fa-solid fa-eraser mr-2"></i> Clear Issue
+                    </button>
+                </div>
+                <div class="flex flex-col-reverse sm:flex-row sm:space-x-3 gap-3 sm:gap-0 w-full sm:w-auto">
+                    <button class="w-full sm:w-auto px-6 py-2.5 text-sm font-bold text-slate-500 hover:bg-slate-200 rounded-2xl transition-colors close-edit-modal">Cancel</button>
+                    <button id="btn-save-edit" class="w-full sm:w-auto px-8 py-2.5 text-sm font-bold text-white bg-rose-500 hover:bg-rose-600 rounded-2xl transition-all shadow-md hover:shadow-lg hover:shadow-rose-500/20 flex items-center justify-center">
+                        <i class="fa-solid fa-triangle-exclamation mr-2"></i> Save Issue
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Confirm Modal -->
+    <div id="confirm-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden modal-enter text-center p-8">
+            <div id="confirm-icon-container" class="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500 border-4 border-white shadow-[0_0_0_4px_rgba(16,185,129,0.1)]">
+                <i id="confirm-icon" class="fa-solid fa-check-double text-3xl"></i>
+            </div>
+            <h3 id="confirm-title" class="text-xl font-extrabold text-slate-800 mb-2">Xác nhận</h3>
+            <p id="confirm-message" class="text-sm text-slate-500 mb-8 font-medium leading-relaxed">Bạn có chắc chắn?</p>
+            <div class="flex space-x-3">
+                <button onclick="closeConfirmModal()" class="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-3 rounded-2xl transition-all">Hủy</button>
+                <button id="btn-confirm-action" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-2xl transition-all shadow-md hover:shadow-lg hover:shadow-emerald-500/20">Xác nhận</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alert Message Modal -->
+    <div id="alert-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden modal-enter text-center p-8">
+            <div class="w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 text-rose-500 border-4 border-white shadow-[0_0_0_4px_rgba(244,63,94,0.1)]">
+                <i id="alert-icon" class="fa-solid fa-xmark text-3xl"></i>
+            </div>
+            <h3 id="alert-title" class="text-xl font-extrabold text-slate-800 mb-2">Thông báo</h3>
+            <p id="alert-message" class="text-sm text-slate-500 mb-8 font-medium leading-relaxed">You do not have permission to edit this data.</p>
+            <button onclick="closeAlert()" class="w-full bg-slate-900 hover:bg-rose-500 text-white font-bold py-3.5 rounded-2xl transition-all shadow-md hover:shadow-lg">Đã hiểu</button>
+        </div>
+    </div>
+
+    <!-- Deadline History Modal -->
+    <div id="deadline-hist-modal" class="fixed inset-0 bg-slate-900/40 z-50 hidden flex items-center justify-center backdrop-blur-sm p-4">
+        <div class="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden modal-enter">
+            <div class="p-5 px-6 border-b border-slate-100 flex justify-between items-center bg-indigo-50/50">
+                <h3 class="font-bold text-slate-800 flex items-center"><i class="fa-solid fa-calendar-day text-indigo-500 mr-2"></i> Lịch sử thay đổi Deadline</h3>
+                <button onclick="document.getElementById('deadline-hist-modal').classList.add('hidden')" class="w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center transition-colors shadow-sm">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div id="deadline-hist-content" class="p-6 max-h-80 overflow-y-auto space-y-3 bg-slate-50/30">
+                <!-- JS populates this -->
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInWithCustomToken, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- FIREBASE FALLBACK SYSTEM ---
+        let useCloud = false;
+        let app, auth, db, appId = 'default-app-id';
+        
+        try {
+            let firebaseConfig = null;
+            if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                firebaseConfig = JSON.parse(__firebase_config);
+            }
+            if (typeof __app_id !== 'undefined') appId = __app_id;
+
+            // Nếu tìm thấy config hợp lệ thì mới khởi tạo Firebase (Môi trường Web)
+            if (firebaseConfig && Object.keys(firebaseConfig).length > 0) {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+                useCloud = true;
+            } else {
+                console.warn("Chạy ở chế độ Local (Offline) vì không tìm thấy chìa khóa Cloud.");
+            }
+        } catch(e) {
+            console.error("Lỗi khởi tạo Cloud:", e);
+        }
+
+        let isDbInitialized = false;
+
+        async function initFirebaseAuth() {
+            // Nếu là Offline mode, bỏ qua đăng nhập Firebase
+            if (!useCloud) {
+                updateCloudStatus('offline');
+                return;
+            }
+            
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (error) {
+                console.error("Auth error:", error);
+                updateCloudStatus('error');
+            }
+        }
+
+        // Chỉ lắng nghe Auth khi ở Cloud Mode
+        if (useCloud) {
+            onAuthStateChanged(auth, (user) => {
+                if (user && !isDbInitialized) {
+                    isDbInitialized = true;
+                    setupRealtimeListeners();
+                }
+            });
+        }
+
+        function setupRealtimeListeners() {
+            if (!useCloud) return;
+            const samplesRef = collection(db, 'artifacts', appId, 'public', 'data', 'samples');
+            onSnapshot(samplesRef, (snapshot) => {
+                samplesData = snapshot.docs.map(d => d.data());
+                refreshUI();
+            }, (err) => { console.error(err); updateCloudStatus('error'); });
+
+            const historyRef = collection(db, 'artifacts', appId, 'public', 'data', 'history');
+            onSnapshot(historyRef, (snapshot) => {
+                importHistory = snapshot.docs.map(d => d.data()).sort((a,b) => b.timestamp - a.timestamp);
+                renderNotifications();
+            }, (err) => { console.error(err); });
+            
+            updateCloudStatus('synced');
+        }
+
+        // --- CLOUD SYNC HELPERS ---
+        let pendingSaves = 0;
+        function updateCloudStatus(status) {
+            const el = document.getElementById('cloud-status');
+            if (!el) return;
+            if (status === 'syncing') {
+                el.innerHTML = '<i class="fa-solid fa-cloud-arrow-up animate-pulse mr-1.5"></i> Syncing...';
+                el.className = 'hidden sm:flex items-center text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-1.5 rounded-full transition-all shadow-sm';
+            } else if (status === 'synced') {
+                el.innerHTML = '<i class="fa-solid fa-cloud mr-1.5"></i> Synced';
+                el.className = 'hidden sm:flex items-center text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 rounded-full transition-all shadow-sm';
+                el.title = "Dữ liệu đã được lưu an toàn trên Cloud.";
+            } else if (status === 'error') {
+                el.innerHTML = '<i class="fa-solid fa-cloud-xmark mr-1.5"></i> Error';
+                el.className = 'hidden sm:flex items-center text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-100 px-2.5 py-1.5 rounded-full transition-all shadow-sm';
+            } else if (status === 'offline') {
+                el.innerHTML = '<i class="fa-solid fa-cloud-slash mr-1.5"></i> Offline Mode';
+                el.className = 'hidden sm:flex items-center text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-100 px-2.5 py-1.5 rounded-full transition-all shadow-sm';
+                el.title = "Đang chạy trên máy cá nhân. Dữ liệu sẽ mất khi tải lại trang.";
+            }
+        }
+
+        async function trackSave(promise) {
+            pendingSaves++;
+            updateCloudStatus('syncing');
+            try {
+                await promise;
+            } catch(e) {
+                console.error(e);
+                updateCloudStatus('error');
+                pendingSaves--;
+                return;
+            }
+            pendingSaves--;
+            if(pendingSaves === 0) updateCloudStatus('synced');
+        }
+
+        async function saveSampleToCloud(sample) {
+            if (!useCloud || !auth.currentUser) {
+                // Nếu ở Offline mode, dữ liệu đã được update ở RAM, chỉ cần refreshUI()
+                refreshUI();
+                return;
+            }
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'samples', sample.id);
+            trackSave(setDoc(docRef, sample));
+        }
+
+        async function saveHistoryToCloud(hist) {
+            if (!useCloud || !auth.currentUser) {
+                const idx = importHistory.findIndex(h => h.batchId === hist.batchId);
+                if (idx > -1) importHistory[idx] = hist;
+                else importHistory.unshift(hist);
+                renderNotifications();
+                return;
+            }
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'history', hist.batchId);
+            trackSave(setDoc(docRef, hist));
+        }
+
+        async function deleteSampleFromCloud(sampleId) {
+            if (!useCloud || !auth.currentUser) {
+                samplesData = samplesData.filter(s => s.id !== sampleId);
+                refreshUI();
+                return;
+            }
+            const docRef = doc(db, 'artifacts', appId, 'public', 'data', 'samples', sampleId);
+            trackSave(deleteDoc(docRef));
+        }
+
+        function refreshUI() {
+            // Lưu lại vị trí focus hiện tại để không bị văng con trỏ chuột khi có thay đổi state
+            const activeElementId = document.activeElement ? document.activeElement.id : null;
+            let activeValue = activeElementId && document.activeElement.tagName === 'INPUT' ? document.activeElement.value : null;
+
+            renderSidebar();
+            renderDashboard();
+
+            if (activeElementId) {
+                const el = document.getElementById(activeElementId);
+                if (el) {
+                    el.focus();
+                    if(activeValue !== null && el.type === 'text') {
+                         el.setSelectionRange(el.value.length, el.value.length); 
+                    }
+                }
+            }
+        }
+
+
+        // --- DATA SETUP ---
+        const STAGES = [
+            'Lamination', 'Panel Saw', 'Edge bander', 'Foiler', 'Drill', 
+            'CNC/Heian', 'Pressing', 'Wrapping', 'Rework', 'Mitering'
+        ];
+
+        let samplesData = []; 
+        let importHistory = [];
+
+        // System State
+        let state = {
+            user: null, 
+            activeFilter: 'All',
+            searchQuery: '',
+            selectedItems: [],
+            sortColumn: null,     
+            sortDirection: null   
+        };
+
+        let currentCompletingId = null;
+        let currentCompletingCompId = null;
+
+        let currentEditingId = null;
+        let currentEditingCompId = null;
+        let currentActionType = null; 
+        let batchToRevoke = null;
+
+        let timerInterval = null;
+
+        // --- DOM ELEMENTS ---
+        const stageListEl = document.getElementById('stage-list');
+        const tableHeadEl = document.getElementById('table-head');
+        const tableBodyEl = document.getElementById('table-body');
+        const emptyStateEl = document.getElementById('empty-state');
+        const pageTitleEl = document.getElementById('page-title');
+        const tableTitleEl = document.getElementById('table-title');
+        const searchContainerEl = document.getElementById('search-container');
+        
+        // Modals
+        const loginModal = document.getElementById('login-modal');
+        const editModal = document.getElementById('edit-modal');
+        const alertModal = document.getElementById('alert-modal');
+        const detailsModal = document.getElementById('details-modal');
+        const confirmModal = document.getElementById('confirm-modal');
+
+        // --- UTILITIES ---
+        function formatWeekShort(weekStr) {
+            if (!weekStr || weekStr === '--') return '--';
+            return String(weekStr).toUpperCase().replace(/(WEEK|TUẦN|TUAN|WK|W)\s*-?\s*/g, 'W');
+        }
+
+        function matchesSearch(sample, item = null) {
+            if (state.searchQuery.trim() === '') return true;
+            const query = state.searchQuery.toLowerCase();
+            
+            let match = sample.code.toLowerCase().includes(query) || 
+                        sample.product.toLowerCase().includes(query) ||
+                        (sample.week && sample.week.toLowerCase().includes(query)); 
+                        
+            if (item) {
+                match = match || 
+                        (item.name && item.name.toLowerCase().includes(query)) ||
+                        (item.desc && item.desc.toLowerCase().includes(query)) ||
+                        (item.drawing && item.drawing.toLowerCase().includes(query)) ||
+                        (item.mrp && item.mrp.toLowerCase().includes(query));
+            }
+            return match;
+        }
+
+        function getValidQty(val) {
+            const num = parseInt(val);
+            return (isNaN(num) || num <= 0) ? 1 : num;
+        }
+
+        function getFGIssue(sample) {
+            if (sample.issue && sample.issue.trim() !== '') return { text: sample.issue, date: sample.issueDate, qty: sample.issueQty };
+            if (sample.components) { const compWithIssue = sample.components.find(c => c.issue && c.issue.trim() !== ''); if (compWithIssue) return { text: `[${compWithIssue.name}] ${compWithIssue.issue}`, date: compWithIssue.issueDate, qty: compWithIssue.issueQty }; }
+            if (sample.laminations) { const lamWithIssue = sample.laminations.find(l => l.issue && l.issue.trim() !== ''); if (lamWithIssue) return { text: `[Lamination] ${lamWithIssue.issue}`, date: lamWithIssue.issueDate, qty: lamWithIssue.issueQty }; }
+            return null;
+        }
+
+        function getSampleProgress(sample) {
+            let totalStages = 0; let doneStages = 0;
+            if (sample.components) { sample.components.forEach(c => { totalStages += c.stages.length; doneStages += c.stages.filter(s => s.done).length; }); }
+            if (sample.laminations) { totalStages += sample.laminations.length; doneStages += sample.laminations.filter(l => l.done).length; }
+            if (totalStages === 0) return 0;
+            return Math.round((doneStages / totalStages) * 100);
+        }
+
+        function generateHistoryHTML(historyArray, compId) {
+            if (!historyArray || historyArray.length === 0) return '';
+            let html = `<div class="mt-4 pt-4 border-t border-slate-100/50"><button onclick="document.getElementById('hist-${compId}').classList.toggle('hidden')" class="flex items-center text-[10px] font-extrabold text-slate-400 hover:text-indigo-600 uppercase tracking-widest transition-colors focus:outline-none"><i class="fa-solid fa-clock-rotate-left mr-1.5"></i> Show / Hide History Log</button><div id="hist-${compId}" class="space-y-2 mt-3 hidden max-h-40 overflow-y-auto pr-1">`;
+            historyArray.forEach(h => { 
+                let colorClass = '', bgClass = '', borderClass = '', icon = '', textClass = '';
+                if (h.action === 'Reported') {
+                    colorClass = 'text-rose-600'; bgClass = 'bg-rose-50/50'; borderClass = 'border-rose-100'; icon = 'fa-triangle-exclamation'; textClass = 'text-rose-400';
+                } else if (h.action === 'DeadlineUpdate') {
+                    colorClass = 'text-indigo-600'; bgClass = 'bg-indigo-50/50'; borderClass = 'border-indigo-100'; icon = 'fa-calendar-day'; textClass = 'text-indigo-400';
+                } else {
+                    colorClass = 'text-emerald-600'; bgClass = 'bg-emerald-50/50'; borderClass = 'border-emerald-100'; icon = 'fa-check-circle'; textClass = 'text-emerald-500';
+                }
+                html += `<div class="flex items-start text-xs ${colorClass} ${bgClass} ${borderClass} p-3 rounded-xl border"><i class="fa-solid ${icon} mt-0.5 mr-2"></i><div class="flex-1"><div class="font-bold">${h.text}</div><div class="text-[10px] ${textClass} font-medium mt-1 flex justify-between items-center"><span><i class="fa-regular fa-clock mr-1"></i> ${h.date}</span><span class="bg-white/50 px-1.5 py-0.5 rounded shadow-sm"><i class="fa-regular fa-user mr-1"></i> ${h.user}</span></div></div></div>`; 
+            });
+            html += `</div></div>`; return html;
+        }
+
+        // --- SORTING LOGIC ---
+        function toggleSort(columnKey) {
+            if (!columnKey) return;
+            if (state.sortColumn === columnKey) {
+                if (state.sortDirection === 'asc') state.sortDirection = 'desc';
+                else if (state.sortDirection === 'desc') {
+                    state.sortColumn = null;
+                    state.sortDirection = null;
+                }
+            } else {
+                state.sortColumn = columnKey;
+                state.sortDirection = 'asc';
+            }
+            renderTable(); 
+        }
+
+        function applySorting(array, viewType) {
+            if (!state.sortColumn || !state.sortDirection) return array;
+            
+            const dir = state.sortDirection === 'asc' ? 1 : -1;
+            
+            return array.sort((a, b) => {
+                let valA, valB;
+                
+                if (viewType === 'All') {
+                    switch(state.sortColumn) {
+                        case 'week': valA = a.week; valB = b.week; break;
+                        case 'code': valA = a.code; valB = b.code; break;
+                        case 'product': valA = a.product; valB = b.product; break;
+                        case 'importedAt': valA = a.timestamp || 0; valB = b.timestamp || 0; break;
+                        case 'progress': valA = getSampleProgress(a); valB = getSampleProgress(b); break;
+                        case 'deadline': valA = a.deadline; valB = b.deadline; break;
+                        default: valA = ''; valB = '';
+                    }
+                } else {
+                    const sA = a.sample || {}, sB = b.sample || {};
+                    const iA = a.item || a.lam || a.comp || {}, iB = b.item || b.lam || b.comp || {};
+                    
+                    switch(state.sortColumn) {
+                        case 'week': valA = sA.week; valB = sB.week; break;
+                        case 'code': valA = sA.code; valB = sB.code; break;
+                        case 'drawing': valA = iA.drawing || ''; valB = iB.drawing || ''; break;
+                        case 'desc': valA = iA.name || iA.desc || ''; valB = iB.name || iB.desc || ''; break;
+                        case 'qty': valA = parseFloat(iA.qty) || 0; valB = parseFloat(iB.qty) || 0; break;
+                        case 'mrp': valA = iA.mrp || ''; valB = iB.mrp || ''; break;
+                        case 'color': valA = iA.color || ''; valB = iB.color || ''; break;
+                        case 'thickness': valA = iA.thickness || iA.dimensions || ''; valB = iB.thickness || iB.dimensions || ''; break;
+                        case 'ebFoil': valA = iA.ebFoil || ''; valB = iB.ebFoil || ''; break;
+                        case 'eb': valA = iA.eb || ''; valB = iB.eb || ''; break;
+                        case 'ebNumber': valA = iA.ebNumber || ''; valB = iB.ebNumber || ''; break;
+                        case 'foil': valA = iA.foil || ''; valB = iB.foil || ''; break;
+                        case 'foilNumber': valA = iA.foilNumber || ''; valB = iB.foilNumber || ''; break;
+                        case 'profile': valA = iA.profile || ''; valB = iB.profile || ''; break;
+                        case 'type': valA = a.type || ''; valB = b.type || ''; break;
+                        default: valA = ''; valB = '';
+                    }
+                }
+
+                if (typeof valA === 'number' && typeof valB === 'number') {
+                    return (valA - valB) * dir;
+                } else {
+                    return String(valA || '').localeCompare(String(valB || ''), undefined, {numeric: true, sensitivity: 'base'}) * dir;
+                }
+            });
+        }
+
+        // --- HEADER UI GENERATOR ---
+        function createHeader(label, sortKey, extraClasses = '') {
+            if (!sortKey) return `<th class="${extraClasses} font-semibold">${label}</th>`;
+            
+            let iconHtml = '<i class="fa-solid fa-sort ml-2 opacity-30 text-[10px]"></i>';
+            let textClass = 'text-slate-400 hover:text-indigo-600';
+            let bgClass = 'hover:bg-slate-100/80 cursor-pointer transition-colors';
+            
+            if (state.sortColumn === sortKey) {
+                textClass = 'text-indigo-600';
+                if (state.sortDirection === 'asc') {
+                    iconHtml = '<i class="fa-solid fa-sort-up ml-2 text-indigo-600 text-[12px]"></i>';
+                } else {
+                    iconHtml = '<i class="fa-solid fa-sort-down ml-2 text-indigo-600 text-[12px]"></i>';
+                }
+            }
+            
+            const justifyClass = extraClasses.includes('text-center') ? 'justify-center' : 'justify-start';
+            
+            return `<th class="${extraClasses} font-semibold ${bgClass} ${textClass} select-none group" onclick="toggleSort('${sortKey}')">
+                <div class="flex items-center ${justifyClass}">${label} <span class="group-hover:opacity-100 transition-opacity inline-block">${iconHtml}</span></div>
+            </th>`;
+        }
+
+        // --- EXPORT TO EXCEL LOGIC ---
+        function exportExcel() {
+            if (samplesData.length === 0) {
+                showAlert("Không có dữ liệu nào trong hệ thống để xuất Excel.", true);
+                return;
+            }
+
+            const wb = XLSX.utils.book_new();
+
+            const headerStyle = {
+                fill: { fgColor: { rgb: "4F46E5" } }, 
+                font: { color: { rgb: "FFFFFF" }, bold: true, sz: 11 },
+                alignment: { horizontal: "center", vertical: "center" },
+                border: { top: {style:'thin', color:{auto:1}}, bottom: {style:'thin', color:{auto:1}}, left: {style:'thin', color:{auto:1}}, right: {style:'thin', color:{auto:1}} }
+            };
+
+            const normalStyle = { 
+                border: { top: {style:'thin', color:{auto:1}}, bottom: {style:'thin', color:{auto:1}}, left: {style:'thin', color:{auto:1}}, right: {style:'thin', color:{auto:1}} } 
+            };
+
+            const errorStyle = { 
+                font: { color: { rgb: "FF0000" } }, 
+                border: { top: {style:'thin', color:{auto:1}}, bottom: {style:'thin', color:{auto:1}}, left: {style:'thin', color:{auto:1}}, right: {style:'thin', color:{auto:1}} } 
+            };
+
+            const doneStyle = {
+                fill: { fgColor: { rgb: "00B050" } }, 
+                font: { color: { rgb: "000000" }, bold: true }, 
+                alignment: { horizontal: "center", vertical: "center" },
+                border: { top: {style:'thin', color:{auto:1}}, bottom: {style:'thin', color:{auto:1}}, left: {style:'thin', color:{auto:1}}, right: {style:'thin', color:{auto:1}} }
+            };
+
+            const pendingStyle = {
+                alignment: { horizontal: "center", vertical: "center" },
+                border: { top: {style:'thin', color:{auto:1}}, bottom: {style:'thin', color:{auto:1}}, left: {style:'thin', color:{auto:1}}, right: {style:'thin', color:{auto:1}} }
+            };
+
+            const headers = [
+                'WEEK', 'DEADLINE', 'FG ITEM', 'DRAWING', 'DESC', 'QTY', 'MRP', 'COLOR', 'THICKNESS',
+                'EB', 'EB#', 'FOIL', 'FOIL#', 'PROFILE',
+                ...STAGES.map(s => s.toUpperCase()),
+                'NOTE'
+            ];
+
+            const headerRow = headers.map(h => ({ v: h, s: headerStyle }));
+
+            const colWidths = headers.map(h => ({ wch: Math.max(12, h.length + 2) }));
+            colWidths[2] = { wch: 20 }; // FG Item
+            colWidths[4] = { wch: 35 }; // Desc
+            colWidths[headers.length - 1] = { wch: 40 }; // Note
+
+            // 1. CHUẨN BỊ SHEET LAMINATION
+            let laminationAoA = [headerRow];
+            let hasLamination = false;
+
+            samplesData.forEach(sample => {
+                if (sample.laminations && sample.laminations.length > 0) {
+                    sample.laminations.forEach(lam => {
+                        hasLamination = true;
+                        let hasIssue = lam.issue && lam.issue.trim() !== '';
+                        let rowStyle = hasIssue ? errorStyle : normalStyle;
+                        
+                        let finalNote = lam.note || '';
+                        if (hasIssue) {
+                            finalNote = finalNote ? `[LỖI: ${lam.issue}] ${finalNote}` : `[LỖI: ${lam.issue}]`;
+                        }
+
+                        let row = [
+                            {v: sample.week || '', s: rowStyle}, 
+                            {v: sample.deadline || '', s: rowStyle}, 
+                            {v: sample.code || '', s: rowStyle}, 
+                            {v: '--', s: rowStyle}, 
+                            {v: lam.desc || '', s: rowStyle}, 
+                            {v: lam.qty || '', s: rowStyle}, 
+                            {v: lam.mrp || '', s: rowStyle}, 
+                            {v: '--', s: rowStyle}, 
+                            {v: lam.thickness || '', s: rowStyle},
+                            {v: '--', s: rowStyle}, {v: '--', s: rowStyle}, {v: '--', s: rowStyle}, {v: '--', s: rowStyle}, {v: '--', s: rowStyle}
+                        ];
+                        
+                        STAGES.forEach(stage => {
+                            if (stage === 'Lamination') {
+                                row.push({ v: 'X', s: lam.done ? doneStyle : pendingStyle });
+                            } else {
+                                row.push({v: '', s: rowStyle});
+                            }
+                        });
+                        row.push({v: finalNote, s: rowStyle});
+                        laminationAoA.push(row);
+                    });
+                }
+            });
+
+            if (hasLamination) {
+                const wsLam = XLSX.utils.aoa_to_sheet(laminationAoA);
+                wsLam['!cols'] = colWidths;
+                XLSX.utils.book_append_sheet(wb, wsLam, "Lamination");
+            }
+
+            // 2. CHUẨN BỊ CÁC SHEET FG ITEM
+            let fgMap = {}; 
+            
+            samplesData.forEach(sample => {
+                if (sample.components && sample.components.length > 0) {
+                    let fgCode = sample.code || 'Unknown';
+                    let safeSheetName = fgCode.replace(/[\[\]\*\?\:\/\\]/g, '').substring(0, 31);
+                    
+                    if (!fgMap[safeSheetName]) {
+                        fgMap[safeSheetName] = [headerRow];
+                    }
+
+                    sample.components.forEach(comp => {
+                        let hasIssue = comp.issue && comp.issue.trim() !== '';
+                        let rowStyle = hasIssue ? errorStyle : normalStyle;
+                        
+                        let finalNote = comp.note || '';
+                        if (hasIssue) {
+                            finalNote = finalNote ? `[LỖI: ${comp.issue}] ${finalNote}` : `[LỖI: ${comp.issue}]`;
+                        }
+
+                        let row = [
+                            {v: sample.week || '', s: rowStyle}, 
+                            {v: sample.deadline || '', s: rowStyle}, 
+                            {v: sample.code || '', s: rowStyle}, 
+                            {v: comp.drawing || '', s: rowStyle}, 
+                            {v: comp.name || '', s: rowStyle}, 
+                            {v: comp.qty || '', s: rowStyle}, 
+                            {v: comp.mrp || '', s: rowStyle}, 
+                            {v: comp.color || '', s: rowStyle}, 
+                            {v: comp.dimensions !== '--' ? comp.dimensions : (comp.thickness || ''), s: rowStyle},
+                            {v: comp.eb !== '--' ? comp.eb : '', s: rowStyle}, 
+                            {v: comp.ebNumber !== '--' ? comp.ebNumber : '', s: rowStyle}, 
+                            {v: comp.foil !== '--' ? comp.foil : '', s: rowStyle}, 
+                            {v: comp.foilNumber !== '--' ? comp.foilNumber : '', s: rowStyle}, 
+                            {v: comp.profile !== '--' ? comp.profile : '', s: rowStyle}
+                        ];
+
+                        STAGES.forEach(stage => {
+                            let stageObj = comp.stages.find(s => s.name === stage);
+                            if (stageObj) {
+                                row.push({ v: 'X', s: stageObj.done ? doneStyle : pendingStyle });
+                            } else {
+                                row.push({v: '', s: rowStyle});
+                            }
+                        });
+                        row.push({v: finalNote, s: rowStyle});
+                        fgMap[safeSheetName].push(row);
+                    });
+                }
+            });
+
+            Object.keys(fgMap).forEach(sheetName => {
+                const ws = XLSX.utils.aoa_to_sheet(fgMap[sheetName]);
+                ws['!cols'] = colWidths;
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            });
+
+            if (wb.SheetNames.length === 0) {
+                showAlert("Không có dữ liệu chi tiết để xuất.", true);
+                return;
+            }
+
+            const nowStr = new Date().toISOString().slice(0, 10);
+            XLSX.writeFile(wb, `Sample_Tracking_Export_${nowStr}.xlsx`);
+        }
+
+        // --- RENDERING FUNCTIONS ---
+        function renderSidebar() {
+            const scrollContainer = document.getElementById('sidebar-scroll-container');
+            const currentScrollPos = scrollContainer ? scrollContainer.scrollTop : 0;
+
+            let dashboardCount = 0;
+            samplesData.forEach(s => { if (s.components && s.components.length > 0 && !s.assembled) dashboardCount++; });
+
+            stageListEl.innerHTML = `
+                <li>
+                    <button onclick="setFilter('All')" class="w-full flex items-center justify-between px-4 py-3 text-sm font-bold rounded-2xl transition-all ${state.activeFilter === 'All' ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}">
+                        <div class="flex items-center"><i class="fa-solid fa-border-all w-5 text-center mr-3"></i> Dashboard</div>
+                        <span class="${state.activeFilter === 'All' ? 'bg-white text-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-500'} text-xs py-1 px-2.5 rounded-full font-extrabold">${dashboardCount}</span>
+                    </button>
+                </li>
+            `;
+
+            STAGES.forEach(stage => {
+                let count = 0;
+                if (stage === 'Lamination') {
+                    let lamCount = 0;
+                    samplesData.forEach(s => { if (s.laminations && s.laminations.length > 0) lamCount += s.laminations.filter(l => !l.done).length; });
+                    count = lamCount;
+                } else {
+                    samplesData.forEach(s => { if (s.components) s.components.forEach(c => { if (c.stages.some(st => st.name === stage && !st.done)) count++; }); });
+                }
+
+                const isActive = state.activeFilter === stage;
+                const stageIcons = { 'Lamination': 'fa-layer-group', 'Panel Saw': 'fa-solid fa-fan', 'Edge bander': 'fa-tape', 'Foiler': 'fa-scroll', 'Drill': 'fa-solid fa-bore-hole', 'CNC/Heian': 'fa-microchip', 'Pressing': 'fa-compress', 'Wrapping': 'fa-box-archive', 'Rework': 'fa-rotate-left', 'Mitering': 'fa-ruler-combined' };
+                let icon = stageIcons[stage] || 'fa-bars-progress';
+
+                stageListEl.innerHTML += `
+                    <li>
+                        <button onclick="setFilter('${stage}')" class="w-full flex items-center justify-between px-4 py-3 text-sm font-bold rounded-2xl transition-all ${isActive ? 'bg-indigo-50 text-indigo-600 shadow-sm' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}">
+                            <div class="flex items-center"><i class="fa-solid ${icon} w-5 text-center mr-3 opacity-80"></i> ${stage}</div>
+                            ${count > 0 ? `<span class="${isActive ? 'bg-white text-indigo-600 shadow-sm' : 'bg-slate-100 text-slate-500'} text-xs py-1 px-2.5 rounded-full font-extrabold">${count}</span>` : ''}
+                        </button>
+                    </li>
+                `;
+            });
+
+            let issueCount = 0;
+            samplesData.forEach(s => {
+                if (s.laminations) issueCount += s.laminations.filter(l => l.issue && l.issue.trim() !== '').length;
+                if (s.components) issueCount += s.components.filter(c => c.issue && c.issue.trim() !== '').length;
+                if (s.issue && s.issue.trim() !== '') issueCount++;
+            });
+
+            stageListEl.innerHTML += `
+                <li class="mt-4 mb-2 px-4"><div class="h-px bg-slate-200/60 w-full"></div></li>
+                <li>
+                    <button onclick="setFilter('Issues')" class="w-full flex items-center justify-between px-4 py-3 text-sm font-bold rounded-2xl transition-all ${state.activeFilter === 'Issues' ? 'bg-rose-50 text-rose-600 shadow-sm' : 'text-slate-500 hover:bg-rose-50 hover:text-rose-600'}">
+                        <div class="flex items-center"><i class="fa-solid fa-triangle-exclamation w-5 text-center mr-3 opacity-80"></i> Reported Issues</div>
+                        ${issueCount > 0 ? `<span class="${state.activeFilter === 'Issues' ? 'bg-white text-rose-600 shadow-sm' : 'bg-rose-100 text-rose-600'} text-xs py-1 px-2.5 rounded-full font-extrabold">${issueCount}</span>` : ''}
+                    </button>
+                </li>
+                <li>
+                    <button onclick="setFilter('Completed')" class="w-full flex items-center justify-between px-4 py-3 text-sm font-bold rounded-2xl transition-all ${state.activeFilter === 'Completed' ? 'bg-emerald-50 text-emerald-600 shadow-sm' : 'text-slate-500 hover:bg-emerald-50 hover:text-emerald-600'}">
+                        <div class="flex items-center"><i class="fa-solid fa-clipboard-check w-5 text-center mr-3 opacity-80"></i> Completed Details</div>
+                    </button>
+                </li>
+            `;
+
+            if (scrollContainer) scrollContainer.scrollTop = currentScrollPos;
+        }
+
+        function renderDashboard() {
+            let total = 0, inProgress = 0, completed = 0, issues = 0, ready = 0;
+            let titleTotal = "Total FG Items";
+
+            const kpiTotal = document.getElementById('kpi-card-total'), kpiProgress = document.getElementById('kpi-card-progress');
+            const kpiIssues = document.getElementById('kpi-card-issues'), kpiCompleted = document.getElementById('kpi-card-completed');
+            const kpiReady = document.getElementById('kpi-card-ready');
+            const kpiContainer = document.getElementById('kpi-container');
+
+            kpiTotal.classList.add('hidden');
+            kpiProgress.classList.add('hidden');
+            kpiIssues.classList.add('hidden');
+            kpiCompleted.classList.add('hidden');
+            kpiReady.classList.add('hidden');
+            
+            if (state.activeFilter === 'All') {
+                kpiTotal.classList.remove('hidden'); kpiProgress.classList.remove('hidden'); 
+                kpiIssues.classList.remove('hidden'); kpiReady.classList.remove('hidden');
+                kpiContainer.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 shrink-0";
+            } else if (state.activeFilter === 'Completed') {
+                kpiCompleted.classList.remove('hidden');
+                kpiContainer.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 shrink-0";
+            } else if (state.activeFilter === 'Issues') {
+                kpiIssues.classList.remove('hidden');
+                kpiContainer.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4 shrink-0";
+            } else {
+                kpiTotal.classList.remove('hidden'); kpiProgress.classList.remove('hidden'); kpiIssues.classList.remove('hidden');
+                kpiContainer.className = "grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 shrink-0";
+            }
+
+            document.getElementById('kpi-title-progress').innerText = "In Progress"; document.getElementById('kpi-icon-progress').className = "fa-solid fa-spinner text-xl";
+            document.getElementById('kpi-title-completed').innerText = "Completed"; document.getElementById('kpi-icon-completed').className = "fa-solid fa-check-double text-xl";
+            document.getElementById('kpi-title-issues').innerText = "With Issues"; document.getElementById('kpi-icon-issues').className = "fa-solid fa-triangle-exclamation text-xl";
+
+            if (state.activeFilter === 'All') {
+                titleTotal = "Total FG Items";
+                samplesData.forEach(s => {
+                    if (!matchesSearch(s)) return;
+                    if (!s.components || s.components.length === 0) return;
+                    if (s.assembled) return; 
+
+                    total++;
+                    const hasIssue = getFGIssue(s) !== null;
+                    const prog = getSampleProgress(s); 
+                    
+                    if (hasIssue) {
+                        issues++;
+                    } else if (prog === 100) {
+                        ready++;
+                    } else if (prog > 0) {
+                        inProgress++;
+                    }
+                });
+            } else if (state.activeFilter === 'Lamination') {
+                titleTotal = "Total Boards";
+                samplesData.forEach(s => {
+                    if (s.laminations && s.laminations.length > 0) {
+                        s.laminations.forEach(lam => {
+                            if (!matchesSearch(s, lam)) return; 
+                            if (lam.done) return; 
+
+                            let qty = parseInt(lam.qty); if (isNaN(qty) || qty <= 0) qty = 1;
+                            total += qty;
+                            if (lam.issue && lam.issue.trim() !== '') issues += qty;
+                            else inProgress += qty;
+                        });
+                    }
+                });
+            } else if (state.activeFilter === 'Completed') {
+                titleTotal = "Scanned Details"; 
+                let completedComps = 0, completedLams = 0;
+                samplesData.forEach(s => {
+                    if (s.laminations) s.laminations.forEach(l => { if (l.done && matchesSearch(s, l)) completedLams++; });
+                    if (s.components) s.components.forEach(c => { if (c.stages.some(st => st.done) && matchesSearch(s, c)) completedComps++; });
+                });
+                completed = completedComps + completedLams;
+            } else if (state.activeFilter === 'Issues') {
+                titleTotal = "Defective Details";
+                samplesData.forEach(s => {
+                    if (s.issue && s.issue.trim() !== '' && matchesSearch(s)) issues++;
+                    if (s.laminations) s.laminations.forEach(l => { if (l.issue && l.issue.trim() !== '' && matchesSearch(s, l)) { issues++; } });
+                    if (s.components) s.components.forEach(c => { if (c.issue && c.issue.trim() !== '' && matchesSearch(s, c)) { issues++; } });
+                });
+            } else {
+                titleTotal = "Total Components"; 
+                let componentsInStage = [];
+                samplesData.forEach(s => {
+                    if (s.components) s.components.forEach(c => {
+                        const stageObj = c.stages.find(st => st.name === state.activeFilter);
+                        if (stageObj && !stageObj.done && matchesSearch(s, c)) {
+                            componentsInStage.push(c);
+                        }
+                    });
+                });
+                total = componentsInStage.length;
+                componentsInStage.forEach(comp => {
+                    if (comp.issue && comp.issue.trim() !== '') issues++;
+                    else inProgress++;
+                });
+            }
+
+            document.getElementById('kpi-title-total').innerText = titleTotal; 
+            document.getElementById('stat-total').innerText = total; 
+            document.getElementById('stat-progress').innerText = inProgress; 
+            document.getElementById('stat-issues').innerText = issues; 
+            document.getElementById('stat-completed').innerText = completed;
+            document.getElementById('stat-ready').innerText = ready;
+
+            renderTable();
+        }
+
+        function renderTable() {
+            tableBodyEl.innerHTML = '';
+            
+            searchContainerEl.classList.remove('hidden');
+            tableTitleEl.innerText = `Tracking Details`;
+            if (state.activeFilter === 'Completed') pageTitleEl.innerText = `Completed Details`;
+            else if (state.activeFilter === 'Issues') pageTitleEl.innerText = `Reported Issues`;
+            else if (state.activeFilter !== 'All') pageTitleEl.innerText = `${state.activeFilter} Tracking`;
+            else pageTitleEl.innerText = `Overview`;
+
+            const allSelected = state.selectedItems.length > 0 && document.querySelectorAll('.row-checkbox:not(:disabled)').length === state.selectedItems.length;
+
+            if (state.activeFilter === 'All') {
+                tableHeadEl.innerHTML = `<tr class="bg-slate-50/50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
+                    ${createHeader('WK', 'week', 'px-8 py-4 text-center')}
+                    ${createHeader('FG Item', 'code', 'px-8 py-4')}
+                    ${createHeader('Decs', 'product', 'px-8 py-4')}
+                    ${createHeader('Date Added', 'importedAt', 'px-8 py-4 whitespace-nowrap')}
+                    ${createHeader('Overall Progress', 'progress', 'px-8 py-4 w-56')}
+                    ${createHeader('Deadline', 'deadline', 'px-8 py-4')}
+                    ${createHeader('Issues', null, 'px-8 py-4')}
+                    ${createHeader('Update', null, 'px-8 py-4 text-center')}
+                </tr>`;
+                
+                let filteredData = samplesData.filter(s => matchesSearch(s) && s.components && s.components.length > 0 && !s.assembled);
+                
+                if (!state.sortColumn) {
+                    filteredData.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                } else {
+                    filteredData = applySorting(filteredData, 'All');
+                }
+                
+                if (filteredData.length === 0) { tableBodyEl.parentElement.classList.add('hidden'); emptyStateEl.classList.remove('hidden'); document.querySelector('#empty-state p').innerText = "Không có FG Items active nào phù hợp."; return; }
+                tableBodyEl.parentElement.classList.remove('hidden'); emptyStateEl.classList.add('hidden');
+
+                filteredData.forEach(sample => {
+                    const fgIssue = getFGIssue(sample), hasIssue = fgIssue !== null, currentProgress = getSampleProgress(sample);
+
+                    let statusBadge = '';
+                    let pColor = '';
+                    if (hasIssue) {
+                        statusBadge = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-600 border border-rose-100/50"><span class="w-1.5 h-1.5 bg-rose-500 rounded-full mr-1.5"></span> Issue</span>`;
+                        pColor = 'bg-gradient-to-r from-rose-400 to-rose-600';
+                    } else if (currentProgress === 100) {
+                        statusBadge = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-cyan-50 text-cyan-600 border border-cyan-100/50"><span class="w-1.5 h-1.5 bg-cyan-500 rounded-full mr-1.5 animate-pulse"></span> Ready to Assemble</span>`;
+                        pColor = 'bg-gradient-to-r from-cyan-400 to-cyan-600';
+                    } else if (currentProgress > 0) {
+                        statusBadge = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-600 border border-indigo-100/50"><span class="w-1.5 h-1.5 bg-indigo-500 rounded-full mr-1.5 animate-pulse"></span> In Progress</span>`;
+                        pColor = 'bg-gradient-to-r from-indigo-400 to-indigo-600';
+                    } else {
+                        statusBadge = `<span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-500 border border-slate-200"><span class="w-1.5 h-1.5 bg-slate-400 rounded-full mr-1.5"></span> Pending</span>`;
+                        pColor = 'bg-gradient-to-r from-indigo-400 to-indigo-600'; 
+                    }
+                    
+                    let actionButtons = `<div class="flex items-center justify-center space-x-2">`;
+                    if (currentProgress === 100 && !sample.assembled && !hasIssue) {
+                        actionButtons += `<button onclick="event.stopPropagation(); attemptAssemble('${sample.id}')" class="w-10 h-10 rounded-full text-cyan-600 bg-cyan-50 hover:bg-cyan-500 hover:text-white flex items-center justify-center transition-all shadow-sm" title="Xác nhận Lắp ráp (Assemble)"><i class="fa-solid fa-hammer"></i></button>`;
+                    }
+                    actionButtons += `<button onclick="event.stopPropagation(); attemptEdit('${sample.id}', null)" class="w-10 h-10 rounded-full ${hasIssue ? 'text-rose-500 bg-rose-50 opacity-100' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100'} flex items-center justify-center transition-all" title="Update FG Issue"><i class="fa-solid fa-triangle-exclamation"></i></button>`;
+                    actionButtons += `</div>`;
+
+                    const deadlineVal = sample.deadline ? sample.deadline : '';
+                    const actualImporter = sample.importedBy || 'Guest';
+                    const canEditDeadline = state.user && (state.user.role === 'Admin' || state.user.username === actualImporter);
+                    
+                    let isOverdue = false;
+                    if (deadlineVal && currentProgress < 100 && !sample.assembled) {
+                        const parts = deadlineVal.split('-');
+                        if (parts.length === 3) {
+                            const today = new Date();
+                            today.setHours(0,0,0,0);
+                            const dDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                            dDate.setHours(0,0,0,0);
+                            if (dDate < today) isOverdue = true;
+                        }
+                    }
+
+                    const deadlineColorClass = isOverdue ? 'text-rose-600' : (hasIssue ? 'text-rose-500' : 'text-slate-600');
+                    const deadlineBorderClass = isOverdue ? 'border-rose-400' : 'border-slate-300';
+                    const deadlineIconColor = isOverdue ? 'text-rose-500 animate-pulse' : (hasIssue ? 'text-rose-400' : 'text-slate-400');
+                    const isOverdueClass = isOverdue ? 'text-rose-600 font-extrabold bg-rose-50 px-1 rounded-md' : '';
+
+                    const deadlineLogs = (sample.issueHistory || []).filter(h => h.action === 'DeadlineUpdate');
+                    let histBtn = '';
+                    if (deadlineLogs.length > 0) {
+                        histBtn = `<button onclick="event.stopPropagation(); showDeadlineHist('${sample.id}')" class="ml-2 w-7 h-7 rounded-full bg-indigo-50 text-indigo-500 hover:bg-indigo-500 hover:text-white flex items-center justify-center transition-all shrink-0 shadow-sm" title="Xem lịch sử thay đổi Deadline"><i class="fa-solid fa-clock-rotate-left text-[11px]"></i></button>`;
+                    }
+                    
+                    let deadlineHtml = '';
+                    if (canEditDeadline) {
+                        deadlineHtml = `
+                            <div class="flex items-center font-medium ${deadlineColorClass}" onclick="event.stopPropagation(); checkPermissionAndFocus(this)">
+                                <i class="fa-regular fa-calendar mr-2 ${deadlineIconColor}"></i>
+                                <input type="date" id="dl-${sample.id}" class="bg-transparent border-b border-dashed ${deadlineBorderClass} focus:border-indigo-500 focus:outline-none py-1 cursor-pointer w-[115px] text-sm font-bold ${isOverdueClass}" value="${deadlineVal}" onchange="updateDeadline('${sample.id}', this.value)">
+                                ${histBtn}
+                            </div>`;
+                    } else {
+                        deadlineHtml = `
+                            <div class="flex items-center font-medium ${deadlineColorClass} ${isOverdue ? '' : 'opacity-80'}" title="Chỉ tài khoản [${actualImporter}] mới được sửa Deadline" onclick="event.stopPropagation(); showAlert('Quyền truy cập bị từ chối! Chỉ tài khoản [${actualImporter}] (Người tạo) hoặc Admin mới có quyền sửa Deadline của mã này.', true)">
+                                <i class="fa-solid fa-lock mr-2 ${isOverdue ? 'text-rose-400' : 'text-slate-300'}"></i>
+                                <span class="py-1 w-[115px] text-sm font-bold cursor-not-allowed border-b border-dashed ${deadlineBorderClass} ${isOverdueClass}">${deadlineVal || '---'}</span>
+                                ${histBtn}
+                            </div>`;
+                    }
+
+                    const tr = document.createElement('tr'); tr.className = `hover:bg-slate-50/80 transition-colors group cursor-pointer`; tr.onclick = () => openDetailsModal(sample.id); 
+                    tr.innerHTML = `<td class="px-8 py-5 whitespace-nowrap text-center"><div class="inline-flex items-center px-3 py-1 rounded-lg text-xs font-extrabold bg-indigo-50/80 text-indigo-600 border border-indigo-100/50 shadow-sm">${formatWeekShort(sample.week)}</div></td><td class="px-8 py-5 whitespace-nowrap"><div class="font-extrabold ${hasIssue ? 'text-rose-600' : 'text-slate-800'}">${sample.code}</div><div class="text-[11px] font-bold ${hasIssue ? 'text-rose-400' : 'text-slate-400'} mt-0.5 tracking-wider">ID: ${sample.id}</div></td><td class="px-8 py-5"><div class="${hasIssue ? 'text-rose-600' : 'text-slate-700'} font-medium">${sample.product}</div></td><td class="px-8 py-5 whitespace-nowrap text-xs text-slate-500 font-medium">${sample.importedAt ? `<i class="fa-regular fa-clock mr-1 text-slate-400"></i> ${sample.importedAt}` : '<span class="text-slate-300 italic">--</span>'}</td><td class="px-8 py-5 whitespace-nowrap"><div class="flex items-center mb-2"><span class="text-xs font-extrabold text-slate-700 w-9">${currentProgress}%</span><div class="w-full bg-slate-100 rounded-full h-2 ml-2 overflow-hidden border border-slate-200/50"><div class="${pColor} h-2 rounded-full relative" style="width: ${currentProgress}%"><div class="absolute top-0 right-0 bottom-0 left-0 bg-white/20"></div></div></div></div><div>${statusBadge}</div></td><td class="px-8 py-5 whitespace-nowrap">${deadlineHtml}</td><td class="px-8 py-5">${hasIssue ? `<div class="flex flex-col"><span class="text-rose-500 text-xs font-bold flex items-start max-w-[150px]"><i class="fa-solid fa-circle-exclamation mt-0.5 mr-1.5"></i> ${fgIssue.text} ${fgIssue.qty ? `<span class="opacity-75 ml-1">(SL: ${fgIssue.qty})</span>` : ''}</span>${fgIssue.date ? `<span class="text-[10px] text-rose-400 mt-1"><i class="fa-regular fa-clock mr-1"></i> ${fgIssue.date}</span>` : ''}</div>` : '<span class="text-slate-300 text-xs italic font-medium">None</span>'}</td><td class="px-8 py-5 whitespace-nowrap text-center">${actionButtons}</td>`;
+                    tableBodyEl.appendChild(tr);
+                });
+
+            } else if (state.activeFilter === 'Issues') {
+                tableHeadEl.innerHTML = `<tr class="bg-slate-50/50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
+                    ${createHeader('#', null, 'px-4 py-4 text-center w-14')}
+                    ${createHeader('WK', 'week', 'px-4 py-4 text-center')}
+                    ${createHeader('DRAWING', 'drawing', 'px-4 py-4')}
+                    ${createHeader('DESC', 'desc', 'px-4 py-4')}
+                    ${createHeader('QTY', 'qty', 'px-4 py-4 text-center')}
+                    ${createHeader('MRP', 'mrp', 'px-4 py-4')}
+                    ${createHeader('COLOR', 'color', 'px-4 py-4')}
+                    ${createHeader('LxWxH', 'thickness', 'px-4 py-4')}
+                    ${createHeader('FG ITEMS', 'code', 'px-4 py-4')}
+                    ${createHeader('NOTE', null, 'px-4 py-4 w-48')}
+                    ${createHeader('Actions', null, 'px-4 py-4 text-center')}
+                </tr>`;
+                
+                let issueItems = [];
+                samplesData.forEach(s => {
+                    if (s.issue && s.issue.trim() !== '') issueItems.push({ sample:s, item: s, type: 'SAMPLE' });
+                    if (s.components) s.components.forEach(c => { if (c.issue && c.issue.trim() !== '') issueItems.push({ sample:s, item: c, type: 'COMP' }); });
+                    if (s.laminations) s.laminations.forEach(l => { if (l.issue && l.issue.trim() !== '') issueItems.push({ sample:s, item: l, type: 'LAM' }); });
+                });
+                issueItems = issueItems.filter(data => matchesSearch(data.sample, data.item !== data.sample ? data.item : null));
+                
+                if (state.sortColumn) issueItems = applySorting(issueItems, 'Issues');
+
+                if (issueItems.length === 0) { tableBodyEl.parentElement.classList.add('hidden'); emptyStateEl.classList.remove('hidden'); return; }
+                tableBodyEl.parentElement.classList.remove('hidden'); emptyStateEl.classList.add('hidden');
+                issueItems.forEach((data, index) => {
+                    const { sample, item, type } = data;
+                    const isLam = type === 'LAM'; const isSample = type === 'SAMPLE';
+                    const drawing = isSample ? '--' : (isLam ? '--' : (item.drawing || '--')); 
+                    const desc = isSample ? '[Dashboard Issue]' : (isLam ? `[Lamination] ${item.desc || '--'}` : item.name);
+                    const qty = isSample ? '--' : (item.qty || '--'); const mrp = isSample ? '--' : (item.mrp || '--'); 
+                    const color = isSample ? '--' : (isLam ? '--' : (item.color || '--')); const dimensions = isSample ? '--' : (isLam ? (item.thickness || '--') : (item.dimensions || '--'));
+                    const compIdStr = isSample ? null : (isLam ? `LAM::${item.id}` : item.id);
+                    
+                    const tr = document.createElement('tr'); tr.className = "bg-rose-50/20 hover:bg-rose-50/60 transition-colors group cursor-pointer border-b border-rose-100/50"; tr.onclick = () => openDetailsModal(sample.id, compIdStr); 
+                    tr.innerHTML = `<td class="px-4 py-5 text-center text-slate-400 font-medium">${index + 1}</td><td class="px-4 py-5 whitespace-nowrap text-center"><div class="inline-flex items-center px-2 py-1 rounded-lg text-[11px] font-extrabold bg-indigo-50/80 text-indigo-600 border border-indigo-100/50 shadow-sm">${formatWeekShort(sample.week)}</div></td><td class="px-4 py-5 font-extrabold text-rose-600 whitespace-nowrap">${drawing}</td><td class="px-4 py-5"><div class="font-bold text-rose-700">${desc}</div><div class="mt-1 flex items-start text-xs font-bold text-rose-500 bg-rose-100/50 px-2 py-1 rounded-md"><i class="fa-solid fa-triangle-exclamation mt-0.5 mr-1.5"></i> ${item.issue} ${item.issueQty ? `<span class="opacity-75 ml-1">(SL: ${item.issueQty})</span>` : ''}</div></td><td class="px-4 py-5 text-center"><span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-rose-100 text-rose-700 border border-rose-200">${qty}</span></td><td class="px-4 py-5 font-bold text-rose-600 whitespace-nowrap">${mrp}</td><td class="px-4 py-5 text-rose-500 font-medium">${color}</td><td class="px-4 py-5 text-rose-500 font-medium whitespace-nowrap">${dimensions}</td><td class="px-4 py-5 whitespace-nowrap"><div class="font-extrabold text-rose-700">${sample.code}</div><div class="text-[11px] font-bold text-rose-400 mt-0.5 tracking-wider">${sample.product}</div></td><td class="px-4 py-5" onclick="event.stopPropagation()"><input type="text" id="note-issue-${item.id || sample.id}" class="w-full bg-transparent border-b border-dashed border-rose-300 focus:border-rose-500 focus:outline-none text-sm py-1.5 text-rose-600 placeholder-rose-300 transition-colors" value="${item.note || ''}" placeholder="Nhập ghi chú..." onchange="${isSample ? `updateSampleNote('${sample.id}', this.value)` : (isLam ? `updateLaminationNote('${sample.id}', '${item.id}', this.value)` : `updateComponentNote('${sample.id}', '${item.id}', this.value)`)}"></td><td class="px-4 py-5 whitespace-nowrap text-center"><button onclick="event.stopPropagation(); attemptEdit('${sample.id}', ${compIdStr ? `'${compIdStr}'` : 'null'})" class="w-10 h-10 rounded-full text-rose-600 bg-rose-100 hover:bg-rose-500 hover:text-white flex items-center justify-center mx-auto transition-all shadow-sm" title="Xem chi tiết / Xóa lỗi"><i class="fa-solid fa-pen"></i></button></td>`;
+                    tableBodyEl.appendChild(tr);
+                });
+
+            } else if (state.activeFilter === 'Completed') {
+                tableHeadEl.innerHTML = `<tr class="bg-slate-50/50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
+                    ${createHeader('WK', 'week', 'px-6 py-4 text-center')}
+                    ${createHeader('Mã Hàng Mẹ (FG Item)', 'code', 'px-6 py-4')}
+                    ${createHeader('Loại (Type)', 'type', 'px-6 py-4 whitespace-nowrap')}
+                    ${createHeader('Tên Chi Tiết / Mô tả', 'desc', 'px-6 py-4')}
+                    ${createHeader('Công Đoạn Đã Hoàn Thành', null, 'px-6 py-4 w-64')}
+                    ${createHeader('Action', null, 'px-6 py-4 text-center')}
+                </tr>`;
+                
+                let completedItems = [];
+                samplesData.forEach(s => {
+                    if (s.laminations) s.laminations.forEach(l => { if (l.done) completedItems.push({ sample:s, item: l, type: 'Lamination' }); });
+                    if (s.components) s.components.forEach(c => { const ds = c.stages.filter(st => st.done); if (ds.length > 0) completedItems.push({ sample:s, item: c, type: 'Component', doneStages: ds }); });
+                });
+                completedItems = completedItems.filter(data => matchesSearch(data.sample, data.item));
+                
+                if (state.sortColumn) completedItems = applySorting(completedItems, 'Completed');
+
+                if (completedItems.length === 0) { tableBodyEl.parentElement.classList.add('hidden'); emptyStateEl.classList.remove('hidden'); return; }
+                tableBodyEl.parentElement.classList.remove('hidden'); emptyStateEl.classList.add('hidden');
+                let lastSampleCode = null;
+                completedItems.forEach(data => {
+                    const { sample, item, type, doneStages } = data;
+                    let stagesText = type === 'Lamination' ? `<span class="inline-flex items-center px-2 py-1 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold border border-emerald-100">Lamination <i class="fa-solid fa-check ml-1.5"></i></span>` : doneStages.map(s => `<span class="inline-flex items-center px-2 py-1 rounded-md bg-emerald-50 text-emerald-600 text-[10px] font-bold border border-emerald-100 mr-1 mb-1">${s.name} <i class="fa-solid fa-check ml-1.5"></i></span>`).join('');
+                    const itemName = type === 'Lamination' ? (item.desc || item.mrp) : item.name;
+                    let borderClass = lastSampleCode && lastSampleCode !== sample.code ? 'border-t-[3px] border-indigo-100/60' : 'border-t border-slate-100/60';
+                    lastSampleCode = sample.code;
+                    const tr = document.createElement('tr'); tr.className = `hover:bg-slate-50/80 transition-colors group cursor-pointer ${borderClass}`; tr.onclick = () => openDetailsModal(sample.id, type === 'Lamination' ? 'LAM::'+item.id : item.id);
+                    tr.innerHTML = `<td class="px-6 py-5 whitespace-nowrap text-center"><div class="inline-flex items-center px-2 py-1 rounded-lg text-[11px] font-extrabold bg-indigo-50/80 text-indigo-600 border border-indigo-100/50 shadow-sm">${formatWeekShort(sample.week)}</div></td><td class="px-6 py-5 whitespace-nowrap"><div class="font-extrabold text-slate-800">${sample.code}</div><div class="text-[11px] font-bold text-slate-400 mt-0.5 tracking-wider">${sample.product}</div></td><td class="px-6 py-5 whitespace-nowrap"><span class="inline-flex items-center px-2.5 py-1 rounded-lg ${type === 'Lamination' ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-indigo-50 text-indigo-600 border-indigo-100'} text-xs font-bold border shadow-sm">${type}</span></td><td class="px-6 py-5"><div class="font-bold text-slate-800">${itemName}</div>${type === 'Component' ? `<div class="text-xs text-slate-500 font-medium mt-0.5">DWG: ${item.drawing || '--'} | QTY: ${item.qty || '--'}</div>` : `<div class="text-xs text-slate-500 font-medium mt-0.5">MRP: ${item.mrp || '--'} | QTY: ${item.qty || '--'}</div>`}</td><td class="px-6 py-5"><div class="flex flex-wrap gap-1">${stagesText}</div></td><td class="px-6 py-5 whitespace-nowrap text-center"><button onclick="event.stopPropagation(); openDetailsModal('${sample.id}', '${type === 'Lamination' ? 'LAM::'+item.id : item.id}')" class="w-8 h-8 rounded-full text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all" title="View Details"><i class="fa-solid fa-arrow-right"></i></button></td>`;
+                    tableBodyEl.appendChild(tr);
+                });
+
+            } else if (state.activeFilter === 'Lamination') {
+                tableHeadEl.innerHTML = `<tr class="bg-slate-50/50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
+                    ${createHeader(`<input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)" ${allSelected ? 'checked' : ''} class="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer">`, null, 'px-4 py-4 text-center w-14')}
+                    ${createHeader('WK', 'week', 'px-4 py-4 text-center')}
+                    ${createHeader('FG ITEM', 'code', 'px-4 py-4')}
+                    ${createHeader('MRP', 'mrp', 'px-4 py-4')}
+                    ${createHeader('DESC', 'desc', 'px-4 py-4')}
+                    ${createHeader('THICKNESS', 'thickness', 'px-4 py-4')}
+                    ${createHeader('QTY', 'qty', 'px-4 py-4 text-center')}
+                    ${createHeader('NOTE', null, 'px-4 py-4 w-48')}
+                    ${createHeader('Actions', null, 'px-4 py-4 text-center')}
+                </tr>`;
+                
+                let flatLaminationList = [];
+                samplesData.forEach(s => { if (s.laminations) s.laminations.forEach(l => { if (!l.done) flatLaminationList.push({ sample:s, lam:l }); }); });
+                flatLaminationList = flatLaminationList.filter(item => matchesSearch(item.sample, item.lam));
+                
+                if (state.sortColumn) flatLaminationList = applySorting(flatLaminationList, 'Lamination');
+
+                if (flatLaminationList.length === 0) { tableBodyEl.parentElement.classList.add('hidden'); emptyStateEl.classList.remove('hidden'); return; }
+                tableBodyEl.parentElement.classList.remove('hidden'); emptyStateEl.classList.add('hidden');
+                flatLaminationList.forEach(item => {
+                    const sample = item.sample, lam = item.lam, fgHasIssue = lam.issue && lam.issue.trim() !== '';
+                    const cbValue = `${sample.id}::LAM::${lam.id}`; const isChecked = state.selectedItems.includes(cbValue);
+                    const tr = document.createElement('tr'); tr.className = "hover:bg-slate-50/80 transition-colors group";
+                    tr.innerHTML = `<td class="px-4 py-5 text-center"><input type="checkbox" class="row-checkbox w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed" value="${cbValue}" onchange="toggleRowSelection(this)" ${fgHasIssue ? 'disabled' : ''} ${isChecked ? 'checked' : ''}></td><td class="px-4 py-5 whitespace-nowrap text-center"><div class="inline-flex items-center px-2 py-1 rounded-lg text-[11px] font-extrabold bg-indigo-50/80 text-indigo-600 border border-indigo-100/50 shadow-sm">${formatWeekShort(sample.week)}</div></td><td class="px-4 py-5 font-extrabold ${fgHasIssue ? 'text-rose-600' : 'text-slate-800'} whitespace-nowrap">${sample.code}</td><td class="px-4 py-5 font-bold ${fgHasIssue ? 'text-rose-500' : 'text-indigo-600'} whitespace-nowrap">${lam.mrp}</td><td class="px-4 py-5 ${fgHasIssue ? 'text-rose-600' : 'text-slate-700'} font-medium">${lam.desc || sample.product}</td><td class="px-4 py-5 ${fgHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium">${lam.thickness}</td><td class="px-4 py-5 text-center"><span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${fgHasIssue ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-200'} border">${lam.qty}</span></td><td class="px-4 py-5"><input type="text" id="note-lam-${lam.id}" class="w-full bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none text-sm py-1.5 ${fgHasIssue ? 'text-rose-500 placeholder-rose-300' : 'text-slate-600 placeholder-slate-300'} transition-colors" value="${lam.note || ''}" placeholder="Nhập ghi chú..." onchange="updateLaminationNote('${sample.id}', '${lam.id}', this.value)"></td><td class="px-4 py-5 whitespace-nowrap text-center"><div class="flex items-center justify-center space-x-2"><button onclick="attemptCompleteLamination('${sample.id}', '${lam.id}')" class="w-10 h-10 rounded-full text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all" title="Mark Lamination Complete"><i class="fa-solid fa-check"></i></button><button onclick="attemptEdit('${sample.id}', 'LAM::${lam.id}')" class="w-10 h-10 rounded-full ${fgHasIssue ? 'text-rose-500 bg-rose-50 opacity-100' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100'} flex items-center justify-center transition-all" title="Report/Update Lamination Issue"><i class="fa-solid fa-triangle-exclamation"></i></button></div></td>`;
+                    tableBodyEl.appendChild(tr);
+                });
+
+            } else {
+                let isEdgeBanderView = state.activeFilter === 'Edge bander', isFoilerView = state.activeFilter === 'Foiler', isMiteringView = state.activeFilter === 'Mitering';
+                let dynamicHeaders = '';
+                if(isEdgeBanderView) dynamicHeaders = createHeader('EB', 'eb', 'px-4 py-4 whitespace-nowrap') + createHeader('EB#', 'ebNumber', 'px-4 py-4 whitespace-nowrap');
+                else if(isFoilerView) dynamicHeaders = createHeader('FOIL', 'foil', 'px-4 py-4 whitespace-nowrap') + createHeader('FOIL#', 'foilNumber', 'px-4 py-4 whitespace-nowrap') + createHeader('PROFILE', 'profile', 'px-4 py-4 whitespace-nowrap');
+                else if(isMiteringView) dynamicHeaders = createHeader('PROFILE MTR', 'profile', 'px-4 py-4 whitespace-nowrap');
+
+                tableHeadEl.innerHTML = `<tr class="bg-slate-50/50 text-slate-400 text-xs uppercase tracking-widest border-b border-slate-100">
+                    ${createHeader(`<input type="checkbox" id="select-all-cb" onchange="toggleSelectAll(this)" ${allSelected ? 'checked' : ''} class="w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer">`, null, 'px-4 py-4 text-center w-14')}
+                    ${createHeader('WK', 'week', 'px-4 py-4 text-center')}
+                    ${createHeader('DRAWING', 'drawing', 'px-4 py-4')}
+                    ${createHeader('DESC', 'desc', 'px-4 py-4')}
+                    ${createHeader('QTY', 'qty', 'px-4 py-4 text-center')}
+                    ${createHeader('MRP', 'mrp', 'px-4 py-4')}
+                    ${createHeader('COLOR', 'color', 'px-4 py-4')}
+                    ${createHeader('LxWxH', 'thickness', 'px-4 py-4')}
+                    ${dynamicHeaders}
+                    ${createHeader('ROUTING', null, 'px-4 py-4 w-48')}
+                    ${createHeader('FG ITEMS', 'code', 'px-4 py-4')}
+                    ${createHeader('NOTE', null, 'px-4 py-4 w-48')}
+                    ${createHeader('Actions', null, 'px-4 py-4 text-center')}
+                </tr>`;
+
+                let componentsToShow = [];
+                samplesData.forEach(s => { if (s.components) s.components.forEach(c => { const stage = c.stages.find(st => st.name === state.activeFilter); if (stage && !stage.done) componentsToShow.push({ sample:s, comp:c }); }); });
+                componentsToShow = componentsToShow.filter(item => matchesSearch(item.sample, item.comp));
+                
+                if (state.sortColumn) componentsToShow = applySorting(componentsToShow, 'Components');
+
+                if (componentsToShow.length === 0) { tableBodyEl.parentElement.classList.add('hidden'); emptyStateEl.classList.remove('hidden'); return; }
+                tableBodyEl.parentElement.classList.remove('hidden'); emptyStateEl.classList.add('hidden');
+
+                componentsToShow.forEach(item => {
+                    const sample = item.sample, comp = item.comp, compHasIssue = !!comp.issue, cbValue = `${sample.id}::${comp.id}`, isChecked = state.selectedItems.includes(cbValue);
+                    
+                    let dynamicCols = '';
+                    if(isEdgeBanderView) dynamicCols = `<td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.eb || '--'}</td><td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.ebNumber || '--'}</td>`;
+                    else if(isFoilerView) dynamicCols = `<td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.foil || '--'}</td><td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.foilNumber || '--'}</td><td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.profile || '--'}</td>`;
+                    else if(isMiteringView) dynamicCols = `<td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.profile || '--'}</td>`;
+                    
+                    const visualStages = comp.stages.filter(s => s.name !== 'Lamination');
+                    const doneVisual = visualStages.filter(s=>s.done).length;
+                    const totalVisual = visualStages.length;
+                    const routingHtml = `<div class="flex items-center">${visualStages.map(s => s.done ? `<span class="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-1 shadow-[0_0_5px_rgba(16,185,129,0.4)]" title="${s.name} (Done)"></span>` : `<span class="w-2.5 h-2.5 rounded-full bg-slate-200 border border-slate-300 mr-1" title="${s.name} (Pending)"></span>`).join('')}<span class="text-xs text-slate-500 font-bold ml-2">(${doneVisual}/${totalVisual})</span></div>`;
+                    
+                    const tr = document.createElement('tr'); tr.className = "hover:bg-slate-50/80 transition-colors group cursor-pointer"; tr.onclick = () => openDetailsModal(sample.id, comp.id); 
+                    tr.innerHTML = `<td class="px-4 py-5 text-center" onclick="event.stopPropagation()"><input type="checkbox" class="row-checkbox w-4 h-4 rounded border-slate-300 text-emerald-500 focus:ring-emerald-500 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed" value="${cbValue}" onchange="toggleRowSelection(this)" ${compHasIssue ? 'disabled' : ''} ${isChecked ? 'checked' : ''}></td><td class="px-4 py-5 whitespace-nowrap text-center" onclick="event.stopPropagation()"><div class="inline-flex items-center px-2 py-1 rounded-lg text-[11px] font-extrabold bg-indigo-50/80 text-indigo-600 border border-indigo-100/50 shadow-sm">${formatWeekShort(sample.week)}</div></td><td class="px-4 py-5 font-extrabold ${compHasIssue ? 'text-rose-600' : 'text-slate-800'} whitespace-nowrap">${comp.drawing || '--'}</td><td class="px-4 py-5 font-bold ${compHasIssue ? 'text-rose-600' : 'text-slate-800'}">${comp.name}</td><td class="px-4 py-5 text-center"><span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold ${compHasIssue ? 'bg-rose-50 text-rose-600 border-rose-200' : 'bg-slate-100 text-slate-700 border-slate-200'} border">${comp.qty || '--'}</span></td><td class="px-4 py-5 font-bold ${compHasIssue ? 'text-rose-500' : 'text-indigo-600'} whitespace-nowrap">${comp.mrp || '--'}</td><td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium">${comp.color || '--'}</td><td class="px-4 py-5 ${compHasIssue ? 'text-rose-500' : 'text-slate-600'} font-medium whitespace-nowrap">${comp.dimensions || '--'}</td>${dynamicCols}<td class="px-4 py-5 whitespace-nowrap">${routingHtml}</td><td class="px-4 py-5 whitespace-nowrap"><div class="font-extrabold ${compHasIssue ? 'text-rose-600' : 'text-slate-800'}">${sample.code}</div><div class="text-[11px] font-bold ${compHasIssue ? 'text-rose-400' : 'text-slate-400'} mt-0.5 tracking-wider">${sample.product}</div></td><td class="px-4 py-5" onclick="event.stopPropagation()"><input type="text" id="note-comp-${comp.id}" class="w-full bg-transparent border-b border-dashed border-slate-300 focus:border-indigo-500 focus:outline-none text-sm py-1.5 ${compHasIssue ? 'text-rose-500 placeholder-rose-300' : 'text-slate-600 placeholder-slate-300'} transition-colors" value="${comp.note || ''}" placeholder="Nhập ghi chú..." onchange="updateComponentNote('${sample.id}', '${comp.id}', this.value)"></td><td class="px-4 py-5 whitespace-nowrap text-center"><div class="flex items-center justify-center space-x-2"><button onclick="event.stopPropagation(); attemptCompleteStage('${sample.id}', '${comp.id}')" class="w-10 h-10 rounded-full text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all" title="Mark Stage Complete"><i class="fa-solid fa-check"></i></button><button onclick="event.stopPropagation(); attemptEdit('${sample.id}', '${comp.id}')" class="w-10 h-10 rounded-full ${compHasIssue ? 'text-rose-500 bg-rose-50 opacity-100' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100'} flex items-center justify-center transition-all" title="Report/Update Issue"><i class="fa-solid fa-triangle-exclamation"></i></button></div></td>`;
+                    tableBodyEl.appendChild(tr);
+                });
+            }
+        }
+
+        // --- NOTIFICATION & LIVE TIMERS LOGIC ---
+        function toggleNotifications() {
+            const dropdown = document.getElementById('notification-dropdown');
+            dropdown.classList.toggle('hidden');
+        }
+
+        function renderNotifications() {
+            const listEl = document.getElementById('notification-list');
+            const badgeEl = document.getElementById('notification-badge');
+            const countBadge = document.getElementById('import-count-badge');
+            
+            const now = Date.now();
+            const activeCount = importHistory.filter(h => h.status === 'Active' && now < h.expiresAt).length;
+            
+            if (activeCount > 0) {
+                badgeEl.innerText = activeCount;
+                badgeEl.classList.remove('hidden');
+                badgeEl.classList.add('flex');
+            } else {
+                badgeEl.classList.add('hidden');
+                badgeEl.classList.remove('flex');
+            }
+            
+            countBadge.innerText = importHistory.length;
+
+            if (importHistory.length === 0) {
+                listEl.innerHTML = `<div class="p-6 text-center text-slate-400 text-xs font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">Bạn chưa thực hiện Import dữ liệu nào.</div>`;
+                return;
+            }
+
+            listEl.innerHTML = '';
+
+            importHistory.forEach(hist => {
+                const isActive = hist.status === 'Active';
+                const isExpired = isActive && now >= hist.expiresAt;
+                
+                let actionHtml = '';
+                let statusClass = isActive && !isExpired ? 'bg-indigo-50/30 border-indigo-100' : (!isActive ? 'bg-rose-50/30 border-rose-100 opacity-80' : 'bg-slate-50/50 border-slate-100');
+
+                if (!isActive) {
+                    actionHtml = `<div class="text-[10px] text-rose-500 font-bold mt-2"><i class="fa-solid fa-ban mr-1"></i> Đã bị thu hồi lúc ${hist.revokedAt || '--'}</div>`;
+                } else if (isExpired) {
+                    actionHtml = `<div class="text-[10px] text-slate-400 font-bold mt-2"><i class="fa-solid fa-lock mr-1"></i> Dữ liệu đã chốt (Hết 30p thu hồi)</div>`;
+                } else {
+                    const isOwner = state.user && state.user.username === hist.user;
+                    if (isOwner) {
+                        actionHtml = `
+                            <div class="flex justify-end mt-2 pt-2 border-t border-indigo-100/50">
+                                <button onclick="attemptRevoke('${hist.batchId}', event)" class="px-4 py-1.5 bg-white text-rose-500 border border-rose-200 hover:bg-rose-50 hover:border-rose-300 rounded-lg text-xs font-bold transition-all shadow-sm flex items-center">
+                                    <i class="fa-solid fa-rotate-left mr-1.5"></i> Thu hồi (Undo)
+                                </button>
+                            </div>
+                        `;
+                    } else {
+                         actionHtml = `<div class="text-[10px] text-slate-400 font-medium mt-2 italic">Chỉ [${hist.user}] mới có quyền thu hồi.</div>`;
+                    }
+                }
+
+                listEl.innerHTML += `
+                    <div class="p-3.5 rounded-2xl border ${statusClass} flex flex-col transition-all">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-[11px] font-extrabold text-slate-800 bg-white px-2 py-0.5 rounded shadow-sm border border-slate-100/50">${hist.batchId}</span>
+                            <span class="text-[10px] text-slate-400 font-medium"><i class="fa-regular fa-clock mr-1"></i> ${hist.time}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-600 font-medium mb-1"><i class="fa-regular fa-user mr-1.5 text-slate-400"></i> Người nhập: <span class="font-bold text-slate-700">${hist.user}</span></div>
+                        <div class="text-[11px] font-bold text-indigo-600"><i class="fa-solid fa-layer-group mr-1.5 opacity-70"></i> Đã nạp ${hist.items.length} FG Items</div>
+                        ${actionHtml}
+                    </div>
+                `;
+            });
+        }
+
+        function updateLiveTimers() {
+            const now = Date.now();
+            let needsRender = false;
+            
+            importHistory.forEach(hist => {
+                if (hist.status === 'Active' && !hist.notifiedExpired && now >= hist.expiresAt) {
+                    hist.notifiedExpired = true; 
+                    needsRender = true;
+                }
+            });
+            
+            if(needsRender) renderNotifications();
+        }
+
+        function showDeadlineHist(sampleId) {
+            const sample = samplesData.find(s => s.id === sampleId);
+            if(!sample) return;
+            const logs = (sample.issueHistory || []).filter(h => h.action === 'DeadlineUpdate');
+            let html = '';
+            logs.forEach(h => {
+                html += `<div class="bg-white border border-indigo-100 shadow-sm rounded-xl p-4 text-xs relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1 h-full bg-indigo-400"></div>
+                    <div class="font-bold text-slate-700 ml-1">${h.text}</div>
+                    <div class="flex justify-between items-center mt-3 ml-1 text-[10px] text-slate-500 font-medium border-t border-slate-50 pt-2">
+                        <span><i class="fa-regular fa-clock mr-1 text-indigo-400"></i> ${h.date}</span>
+                        <span class="bg-slate-50 border border-slate-100 px-2 py-0.5 rounded-md"><i class="fa-regular fa-user mr-1 text-slate-400"></i> ${h.user}</span>
+                    </div>
+                </div>`;
+            });
+            document.getElementById('deadline-hist-content').innerHTML = html;
+            document.getElementById('deadline-hist-modal').classList.remove('hidden');
+        }
+
+        // --- ACTION / REVOKE LOGIC ---
+        function attemptRevoke(batchId, event) {
+            if(event) event.stopPropagation();
+
+            const hist = importHistory.find(h => h.batchId === batchId);
+            if (!hist) return;
+
+            if (!state.user || state.user.username !== hist.user) {
+                showAlert(`Bạn không có quyền! Chỉ tài khoản [${hist.user}] mới có thể thu hồi file này.`, true);
+                return;
+            }
+
+            document.getElementById('notification-dropdown').classList.add('hidden');
+
+            batchToRevoke = batchId;
+            currentActionType = 'REVOKE';
+            
+            document.getElementById('confirm-title').innerText = "Thu hồi dữ liệu Import";
+            document.getElementById('confirm-message').innerHTML = `Bạn có chắc chắn muốn thu hồi dữ liệu của lô <strong>${batchId}</strong>?<br>Thao tác này sẽ xóa toàn bộ các mã hàng thuộc lô này khỏi hệ thống.`;
+            
+            document.getElementById('confirm-icon-container').className = 'w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 text-rose-500 border-4 border-white shadow-[0_0_0_4px_rgba(244,63,94,0.1)]';
+            document.getElementById('confirm-icon').className = 'fa-solid fa-rotate-left text-3xl';
+            
+            const btn = document.getElementById('btn-confirm-action');
+            btn.className = 'w-full bg-rose-500 hover:bg-rose-600 text-white font-bold py-3 rounded-2xl transition-all shadow-md hover:shadow-lg hover:shadow-rose-500/20';
+            btn.onclick = executeRevoke;
+
+            confirmModal.classList.remove('hidden');
+        }
+
+        function executeRevoke() {
+            if (!batchToRevoke) return;
+
+            const hist = importHistory.find(h => h.batchId === batchToRevoke);
+            if(!hist || hist.status !== 'Active') {
+                closeConfirmModal();
+                return;
+            }
+
+            // Xóa dữ liệu
+            hist.items.forEach(id => {
+                deleteSampleFromCloud(id);
+            });
+
+            hist.status = 'Revoked';
+            hist.revokedAt = new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+            hist.revokedBy = state.user ? state.user.username : 'Guest';
+
+            saveHistoryToCloud(hist);
+
+            closeConfirmModal();
+            showAlert(`Đã thu hồi thành công dữ liệu của lô ${batchToRevoke}`, false);
+        }
+
+        function checkCompletionPermissions(action = null) {
+            if (!state.user) { showAlert("Bạn cần đăng nhập để thao tác.", true); return false; }
+            const role = state.user.role;
+            if (role === 'Viewer') { showAlert("Tài khoản của bạn chỉ có quyền Xem.", true); return false; }
+            
+            if (role === 'Admin') return true;
+            if (action === 'Assemble' || action === 'Deadline') return true; 
+            
+            if (role !== state.activeFilter && state.activeFilter !== 'Issues') {
+                showAlert(`Từ chối quyền truy cập! Bạn thuộc bộ phận [${role}]. Bạn chỉ có thể thao tác ở công đoạn của mình.`, true); return false;
+            }
+            return true;
+        }
+
+        function checkPermissionAndFocus(element) {
+            if (!state.user || state.user.role === 'Viewer') {
+                showAlert("Bạn không có quyền chỉnh sửa nội dung này.", true);
+                return;
+            }
+            const input = element.querySelector('input');
+            if(input) {
+                input.focus();
+                if (typeof input.showPicker === 'function') {
+                    try { input.showPicker(); } catch (e) {}
+                }
+            }
+        }
+
+        function updateDeadline(sampleId, newDate) {
+            const sample = samplesData.find(s => s.id === sampleId);
+            if (!sample) return;
+            
+            const actualImporter = sample.importedBy || 'Guest';
+            const canEdit = state.user && (state.user.role === 'Admin' || state.user.username === actualImporter);
+
+            if (!canEdit) {
+                showAlert(`Quyền truy cập bị từ chối! Chỉ tài khoản [${actualImporter}] (Người tạo) hoặc Admin mới có quyền sửa Deadline của mã này.`, true);
+                refreshUI(); 
+                return;
+            }
+
+            const oldDate = sample.deadline || 'Trống';
+            const finalNewDate = newDate || 'Trống';
+            
+            if (oldDate === finalNewDate) return; 
+
+            sample.deadline = newDate;
+
+            // Log lịch sử
+            const nowStr = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            const currentUser = state.user ? state.user.username : 'Guest';
+
+            if (!sample.issueHistory) sample.issueHistory = [];
+            sample.issueHistory.unshift({
+                date: nowStr,
+                text: `Cập nhật Deadline: Từ [${oldDate}] thành [${finalNewDate}]`,
+                action: 'DeadlineUpdate',
+                user: currentUser
+            });
+
+            saveSampleToCloud(sample);
+            showAlert('Đã cập nhật Deadline và lưu lịch sử thành công!', false);
+        }
+
+        function setupConfirmCompleteModal(msgText) {
+            currentActionType = 'COMPLETE';
+            document.getElementById('confirm-title').innerText = "Xác nhận";
+            document.getElementById('confirm-message').innerHTML = msgText;
+            document.getElementById('confirm-icon-container').className = 'w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500 border-4 border-white shadow-[0_0_0_4px_rgba(16,185,129,0.1)]';
+            document.getElementById('confirm-icon').className = 'fa-solid fa-check-double text-3xl';
+            const btn = document.getElementById('btn-confirm-action');
+            btn.className = 'w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-2xl transition-all shadow-md hover:shadow-lg hover:shadow-emerald-500/20';
+            btn.onclick = executeCompleteStage;
+            confirmModal.classList.remove('hidden');
+        }
+
+        function attemptAssemble(sampleId) {
+            if(!checkCompletionPermissions('Assemble')) return;
+            currentCompletingId = sampleId;
+            currentActionType = 'ASSEMBLE';
+            
+            document.getElementById('confirm-title').innerText = "Xác nhận Lắp ráp";
+            document.getElementById('confirm-message').innerHTML = `Xác nhận mã hàng này đã được lắp ráp hoàn thiện? (Sẽ bị ẩn khỏi màn hình chính)`;
+            document.getElementById('confirm-icon-container').className = 'w-20 h-20 bg-cyan-50 rounded-full flex items-center justify-center mx-auto mb-6 text-cyan-500 border-4 border-white shadow-[0_0_0_4px_rgba(6,182,212,0.1)]';
+            document.getElementById('confirm-icon').className = 'fa-solid fa-hammer text-3xl';
+            
+            const btn = document.getElementById('btn-confirm-action');
+            btn.className = 'w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-3 rounded-2xl transition-all shadow-md hover:shadow-lg hover:shadow-cyan-500/20';
+            btn.onclick = executeAssemble;
+            confirmModal.classList.remove('hidden');
+        }
+
+        function executeAssemble() {
+            if (!currentCompletingId) return;
+            const sample = samplesData.find(s => s.id === currentCompletingId);
+            if (sample) {
+                sample.assembled = true;
+                const nowStr = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+                const currentUser = state.user ? state.user.role : 'System';
+                if (!sample.issueHistory) sample.issueHistory = [];
+                sample.issueHistory.unshift({ date: nowStr, text: `Đã xác nhận Lắp ráp hoàn thiện (Assembled)`, action: 'Completed', user: currentUser });
+                
+                saveSampleToCloud(sample);
+            }
+            closeConfirmModal();
+        }
+
+        function attemptBulkComplete() {
+            if(!checkCompletionPermissions()) return;
+            currentCompletingId = 'BULK';
+            setupConfirmCompleteModal(`Xác nhận hoàn thành <strong>${state.selectedItems.length}</strong> mục đã chọn ở công đoạn <strong>${state.activeFilter}</strong>?`);
+        }
+
+        function attemptCompleteLamination(sampleId, lamId) {
+            if(!checkCompletionPermissions()) return;
+            const sample = samplesData.find(s => s.id === sampleId);
+            const lam = sample.laminations.find(l => l.id === lamId);
+            if (lam && lam.issue && lam.issue.trim() !== '') { showAlert(`Vui lòng xử lý lỗi (Issue) trước khi thao tác.`, true); return; }
+            currentCompletingId = sampleId; currentCompletingCompId = `LAM::${lamId}`; 
+            setupConfirmCompleteModal(`Xác nhận đã hoàn thành công đoạn <strong>Lamination</strong> cho ván <strong>${lam.desc || lam.mrp}</strong>?`);
+        }
+
+        function attemptCompleteStage(sampleId, compId) {
+            if(!checkCompletionPermissions()) return;
+            const sample = samplesData.find(s => s.id === sampleId);
+            const comp = sample.components.find(c => c.id === compId);
+            if (comp && comp.issue && comp.issue.trim() !== '') { showAlert(`Vui lòng xử lý lỗi (Issue) cho chi tiết [${comp.name}] trước khi thao tác.`, true); return; }
+            currentCompletingId = sampleId; currentCompletingCompId = compId;
+            setupConfirmCompleteModal(`Xác nhận hoàn thành chi tiết <strong>${comp.name}</strong> tại công đoạn <strong>${state.activeFilter}</strong>?`);
+        }
+
+        function closeConfirmModal() {
+            confirmModal.classList.add('hidden');
+            currentCompletingId = null;
+            currentCompletingCompId = null;
+            batchToRevoke = null;
+            currentActionType = null;
+        }
+
+        function executeCompleteStage() {
+            if (!currentCompletingId) return;
+            const nowStr = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            const currentUser = state.user ? state.user.role : 'System';
+
+            if (currentCompletingId === 'BULK') {
+                const affectedSamples = new Set();
+                state.selectedItems.forEach(val => {
+                    const [sId, compType, lamId] = val.split('::');
+                    const sample = samplesData.find(s => s.id === sId);
+                    if (sample) {
+                        affectedSamples.add(sample);
+                        if (compType === 'LAM') {
+                            const lam = sample.laminations.find(l => l.id === lamId);
+                            if (lam) {
+                                lam.done = true;
+                                if (!lam.issueHistory) lam.issueHistory = [];
+                                lam.issueHistory.unshift({ date: nowStr, text: `Đã hoàn thành công đoạn: Lamination`, action: 'Completed', user: currentUser });
+                                if (sample.laminations.every(l => l.done)) applyLaminationComplete(sample, nowStr, currentUser);
+                            }
+                        } else {
+                            const cId = val.split('::')[1]; 
+                            const comp = sample.components.find(c => c.id === cId);
+                            if (comp) applyComponentComplete(comp, state.activeFilter, nowStr, currentUser);
+                        }
+                    }
+                });
+                state.selectedItems = [];
+                updateBulkCompleteUI();
+                affectedSamples.forEach(s => saveSampleToCloud(s));
+
+            } else {
+                const sample = samplesData.find(s => s.id === currentCompletingId);
+                if (sample) {
+                    if (currentCompletingCompId && currentCompletingCompId.startsWith('LAM::')) {
+                        const lamId = currentCompletingCompId.split('::')[1];
+                        const lam = sample.laminations.find(l => l.id === lamId);
+                        if (lam) {
+                            lam.done = true;
+                            if (!lam.issueHistory) lam.issueHistory = [];
+                            lam.issueHistory.unshift({ date: nowStr, text: `Đã hoàn thành công đoạn: Lamination`, action: 'Completed', user: currentUser });
+                            if (sample.laminations.every(l => l.done)) applyLaminationComplete(sample, nowStr, currentUser);
+                        }
+                    } else {
+                        const comp = sample.components.find(c => c.id === currentCompletingCompId);
+                        if (comp) applyComponentComplete(comp, state.activeFilter, nowStr, currentUser);
+                    }
+                    saveSampleToCloud(sample);
+                }
+            }
+            closeConfirmModal();
+        }
+
+        // --- CÁC HÀM XỬ LÝ BÁO LỖI (EDIT/ISSUE) ---
+        function attemptBulkIssue() {
+            if(!checkCompletionPermissions()) return;
+            currentEditingId = 'BULK';
+            currentEditingCompId = null;
+            document.getElementById('edit-code-display').innerText = state.selectedItems.length;
+            document.getElementById('edit-product-display').innerText = `Đang báo lỗi cho ${state.selectedItems.length} chi tiết`;
+            document.getElementById('edit-issue').value = '';
+            
+            document.getElementById('edit-qty-wrapper').classList.remove('hidden');
+            
+            let itemsToEdit = [];
+            state.selectedItems.forEach(val => {
+                const parts = val.split('::');
+                const sId = parts[0];
+                const sample = samplesData.find(s => s.id === sId);
+                if (sample) {
+                    if (parts[1] === 'LAM') {
+                        const lamId = parts[2];
+                        const lam = sample.laminations.find(l => l.id === lamId);
+                        if (lam) itemsToEdit.push({ id: lam.id, name: `[Lamination] ${lam.desc || lam.mrp}`, qty: getValidQty(lam.qty), issueQty: getValidQty(lam.qty) });
+                    } else {
+                        const cId = parts[1];
+                        const comp = sample.components.find(c => c.id === cId);
+                        if (comp) itemsToEdit.push({ id: comp.id, name: comp.name, qty: getValidQty(comp.qty), issueQty: getValidQty(comp.qty) });
+                    }
+                }
+            });
+
+            let qtyHtml = '';
+            itemsToEdit.forEach(item => {
+                qtyHtml += `<div class="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-3"><span class="text-xs font-bold text-slate-700 truncate mr-3 flex-1" title="${item.name}">${item.name}</span><div class="flex items-center space-x-2"><span class="text-[10px] text-slate-400 font-bold">Lỗi:</span><input type="number" id="issue-qty-${item.id}" class="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold text-rose-600 focus:outline-none focus:border-rose-500 text-center" value="${item.issueQty}" min="1" max="${item.qty}"></div></div>`;
+            });
+            document.getElementById('issue-qty-container').innerHTML = qtyHtml;
+
+            document.getElementById('btn-clear-edit').classList.add('hidden');
+            editModal.classList.remove('hidden');
+        }
+
+        function attemptEdit(sampleId, compId = null) {
+            if (!state.user) { showAlert("Bạn cần đăng nhập để thao tác.", true); return; }
+            if (state.user.role === 'Viewer') { showAlert("Tài khoản của bạn chỉ có quyền Xem.", true); return; }
+            
+            currentEditingId = sampleId;
+            currentEditingCompId = compId;
+            
+            const sample = samplesData.find(s => s.id === sampleId);
+            if (!sample) return;
+
+            let title = '', subtitle = '', issueText = '', itemsToEdit = [];
+            
+            if (!compId) {
+                title = sample.code; subtitle = sample.product; issueText = sample.issue || '';
+                document.getElementById('edit-qty-wrapper').classList.add('hidden');
+                document.getElementById('issue-qty-container').innerHTML = '';
+            } else if (compId.startsWith('LAM::')) {
+                const lamId = compId.split('::')[1];
+                const lam = sample.laminations.find(l => l.id === lamId);
+                title = 'Lamination'; subtitle = lam.desc || lam.mrp; issueText = lam.issue || '';
+                itemsToEdit.push({ id: lam.id, name: lam.desc || lam.mrp, qty: getValidQty(lam.qty), issueQty: getValidQty(lam.issueQty || lam.qty) });
+                document.getElementById('edit-qty-wrapper').classList.remove('hidden');
+            } else {
+                const comp = sample.components.find(c => c.id === compId);
+                title = comp.name; subtitle = comp.drawing || '--'; issueText = comp.issue || '';
+                itemsToEdit.push({ id: comp.id, name: comp.name, qty: getValidQty(comp.qty), issueQty: getValidQty(comp.issueQty || comp.qty) });
+                document.getElementById('edit-qty-wrapper').classList.remove('hidden');
+            }
+
+            document.getElementById('edit-code-display').innerText = title.substring(0, 3).toUpperCase();
+            document.getElementById('edit-product-display').innerText = subtitle;
+            document.getElementById('edit-issue').value = issueText;
+            
+            if (compId) {
+                let qtyHtml = '';
+                itemsToEdit.forEach(item => {
+                    qtyHtml += `<div class="flex items-center justify-between bg-white border border-slate-200 rounded-xl p-3"><span class="text-xs font-bold text-slate-700 truncate mr-3 flex-1">${item.name}</span><div class="flex items-center space-x-2"><span class="text-[10px] text-slate-400 font-bold">Lỗi:</span><input type="number" id="issue-qty-${item.id}" class="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-sm font-bold text-rose-600 focus:outline-none focus:border-rose-500 text-center" value="${item.issueQty}" min="1" max="${item.qty}"></div></div>`;
+                });
+                document.getElementById('issue-qty-container').innerHTML = qtyHtml;
+            }
+            
+            if (issueText) document.getElementById('btn-clear-edit').classList.remove('hidden');
+            else document.getElementById('btn-clear-edit').classList.add('hidden');
+            
+            editModal.classList.remove('hidden');
+        }
+
+        function saveEdit(isClear = false) {
+            if (!currentEditingId) return;
+            
+            let issueText = isClear ? '' : document.getElementById('edit-issue').value.trim();
+            if (!isClear && !issueText) { showAlert("Vui lòng nhập nội dung lỗi.", true); return; }
+            
+            const nowStr = new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+            const currentUser = state.user ? state.user.role : 'System';
+
+            if (currentEditingId === 'BULK') {
+                const affectedSamples = new Set();
+                state.selectedItems.forEach(val => {
+                    const parts = val.split('::');
+                    const sId = parts[0];
+                    const sample = samplesData.find(s => s.id === sId);
+                    if (sample) {
+                        affectedSamples.add(sample);
+                        if (parts[1] === 'LAM') {
+                            const lamId = parts[2];
+                            const lam = sample.laminations.find(l => l.id === lamId);
+                            if (lam) {
+                                lam.issue = issueText;
+                                lam.issueDate = isClear ? '' : nowStr;
+                                const qtyInput = document.getElementById(`issue-qty-${lam.id}`);
+                                lam.issueQty = isClear ? null : (qtyInput ? getValidQty(qtyInput.value) : getValidQty(lam.qty));
+                                if (!lam.issueHistory) lam.issueHistory = [];
+                                lam.issueHistory.unshift({ date: nowStr, text: isClear ? 'Đã gỡ báo lỗi.' : `Báo lỗi (SL: ${lam.issueQty}): ${issueText}`, action: isClear ? 'Cleared' : 'Reported', user: currentUser });
+                            }
+                        } else {
+                            const cId = parts[1]; 
+                            const comp = sample.components.find(c => c.id === cId);
+                            if (comp) {
+                                comp.issue = issueText;
+                                comp.issueDate = isClear ? '' : nowStr;
+                                const qtyInput = document.getElementById(`issue-qty-${comp.id}`);
+                                comp.issueQty = isClear ? null : (qtyInput ? getValidQty(qtyInput.value) : getValidQty(comp.qty));
+                                if (!comp.issueHistory) comp.issueHistory = [];
+                                comp.issueHistory.unshift({ date: nowStr, text: isClear ? 'Đã gỡ báo lỗi.' : `Báo lỗi (SL: ${comp.issueQty}): ${issueText}`, action: isClear ? 'Cleared' : 'Reported', user: currentUser });
+                            }
+                        }
+                    }
+                });
+                state.selectedItems = [];
+                updateBulkCompleteUI();
+                affectedSamples.forEach(s => saveSampleToCloud(s));
+                showAlert(`Đã ${isClear ? 'gỡ' : 'cập nhật'} báo lỗi hàng loạt thành công!`, false);
+
+            } else {
+                const sample = samplesData.find(s => s.id === currentEditingId);
+                if (sample) {
+                    if (!currentEditingCompId) {
+                        sample.issue = issueText;
+                        sample.issueDate = isClear ? '' : nowStr;
+                        if (!sample.issueHistory) sample.issueHistory = [];
+                        sample.issueHistory.unshift({ date: nowStr, text: isClear ? 'Đã gỡ báo lỗi tổng thể.' : `Báo lỗi: ${issueText}`, action: isClear ? 'Cleared' : 'Reported', user: currentUser });
+                    } else if (currentEditingCompId.startsWith('LAM::')) {
+                        const lamId = currentEditingCompId.split('::')[1];
+                        const lam = sample.laminations.find(l => l.id === lamId);
+                        if (lam) {
+                            lam.issue = issueText;
+                            lam.issueDate = isClear ? '' : nowStr;
+                            const qtyInput = document.getElementById(`issue-qty-${lam.id}`);
+                            lam.issueQty = isClear ? null : (qtyInput ? getValidQty(qtyInput.value) : getValidQty(lam.qty));
+                            if (!lam.issueHistory) lam.issueHistory = [];
+                            lam.issueHistory.unshift({ date: nowStr, text: isClear ? 'Đã gỡ báo lỗi.' : `Báo lỗi (SL: ${lam.issueQty}): ${issueText}`, action: isClear ? 'Cleared' : 'Reported', user: currentUser });
+                        }
+                    } else {
+                        const comp = sample.components.find(c => c.id === currentEditingCompId);
+                        if (comp) {
+                            comp.issue = issueText;
+                            comp.issueDate = isClear ? '' : nowStr;
+                            const qtyInput = document.getElementById(`issue-qty-${comp.id}`);
+                            comp.issueQty = isClear ? null : (qtyInput ? getValidQty(qtyInput.value) : getValidQty(comp.qty));
+                            if (!comp.issueHistory) comp.issueHistory = [];
+                            comp.issueHistory.unshift({ date: nowStr, text: isClear ? 'Đã gỡ báo lỗi.' : `Báo lỗi (SL: ${comp.issueQty}): ${issueText}`, action: isClear ? 'Cleared' : 'Reported', user: currentUser });
+                        }
+                    }
+                    saveSampleToCloud(sample);
+                }
+                showAlert(`Đã ${isClear ? 'gỡ' : 'cập nhật'} báo lỗi thành công!`, false);
+            }
+            
+            editModal.classList.add('hidden');
+        }
+
+        // --- CÁC HÀM TIỆN ÍCH DỮ LIỆU KHÁC ---
+        function toggleSelectAll(checkbox) {
+            const isChecked = checkbox.checked;
+            const checkboxes = document.querySelectorAll('.row-checkbox:not(:disabled)');
+            state.selectedItems = [];
+            checkboxes.forEach(cb => { cb.checked = isChecked; if(isChecked) state.selectedItems.push(cb.value); });
+            updateBulkCompleteUI();
+        }
+
+        function toggleRowSelection(checkbox) {
+            if(checkbox.checked) { if(!state.selectedItems.includes(checkbox.value)) state.selectedItems.push(checkbox.value); } 
+            else { state.selectedItems = state.selectedItems.filter(item => item !== checkbox.value); document.getElementById('select-all-cb').checked = false; }
+            updateBulkCompleteUI();
+        }
+
+        function updateBulkCompleteUI() {
+            const btnComplete = document.getElementById('btn-bulk-complete'), countComplete = document.getElementById('bulk-count');
+            const btnIssue = document.getElementById('btn-bulk-issue'), countIssue = document.getElementById('bulk-issue-count');
+            if (state.selectedItems.length > 0) {
+                btnComplete.classList.remove('hidden'); btnComplete.classList.add('flex'); countComplete.innerText = state.selectedItems.length;
+                btnIssue.classList.remove('hidden'); btnIssue.classList.add('flex'); countIssue.innerText = state.selectedItems.length;
+            } else {
+                btnComplete.classList.add('hidden'); btnComplete.classList.remove('flex');
+                btnIssue.classList.add('hidden'); btnIssue.classList.remove('flex');
+            }
+        }
+
+        function setFilter(stage) {
+            state.activeFilter = stage; 
+            document.getElementById('search-input').value = ''; 
+            state.searchQuery = ''; 
+            state.selectedItems = []; 
+            state.sortColumn = null;
+            state.sortDirection = null;
+            updateBulkCompleteUI(); 
+            refreshUI(); 
+        }
+
+        function updateSampleNote(sampleId, noteValue) { const s = samplesData.find(s => s.id === sampleId); if (s) { s.note = noteValue; saveSampleToCloud(s); } }
+        function updateLaminationNote(sampleId, lamId, noteValue) { const s = samplesData.find(s => s.id === sampleId); if (s && s.laminations) { const l = s.laminations.find(l => l.id === lamId); if (l) { l.note = noteValue; saveSampleToCloud(s); } } }
+        function updateComponentNote(sampleId, compId, noteValue) { const s = samplesData.find(s => s.id === sampleId); if (s) { const c = s.components.find(c => c.id === compId); if (c) { c.note = noteValue; saveSampleToCloud(s); } } }
+
+        function applyLaminationComplete(sample, nowStr, currentUser) {
+            sample.components.forEach(comp => {
+                const stageObj = comp.stages.find(s => s.name === 'Lamination');
+                if (stageObj) { stageObj.done = true; comp.status = comp.stages.every(s => s.done) ? 'Completed' : (comp.stages.some(s => s.done) ? 'In Progress' : 'Pending'); }
+            });
+            if (!sample.issueHistory) sample.issueHistory = [];
+            sample.issueHistory.unshift({ date: nowStr, text: `Đã hoàn thành toàn bộ công đoạn: Lamination`, action: 'Completed', user: currentUser });
+        }
+
+        function applyComponentComplete(comp, stageName, nowStr, currentUser) {
+            const stageObj = comp.stages.find(s => s.name === stageName);
+            if (stageObj) {
+                stageObj.done = true; comp.status = comp.stages.every(s => s.done) ? 'Completed' : (comp.stages.some(s => s.done) ? 'In Progress' : 'Pending');
+                if (!comp.issueHistory) comp.issueHistory = [];
+                comp.issueHistory.unshift({ date: nowStr, text: `Đã hoàn thành công đoạn: ${stageName}`, action: 'Completed', user: currentUser });
+            }
+        }
+
+        // --- AUTH & DETAILS MODAL LOGIC ---
+        function checkAuthUI() {
+            const loginTrigger = document.getElementById('btn-login-trigger'), userProfile = document.getElementById('user-profile');
+            if (state.user) { loginTrigger.classList.add('hidden'); userProfile.classList.remove('hidden'); document.getElementById('user-name-display').innerText = state.user.username; document.getElementById('user-role-display').innerText = state.user.role; } 
+            else { loginTrigger.classList.remove('hidden'); userProfile.classList.add('hidden'); }
+        }
+        function handleLogin() { const user = document.getElementById('login-username').value; if(user) { state.user = { username: user, role: document.getElementById('login-role').value }; loginModal.classList.add('hidden'); checkAuthUI(); renderNotifications(); } }
+        function handleLogout() { state.user = null; document.getElementById('btn-logout').classList.add('hidden'); checkAuthUI(); renderNotifications(); refreshUI(); }
+        function toggleLogoutMenu() { document.getElementById('btn-logout').classList.toggle('hidden'); }
+        
+        function openImportModal() {
+            if (!state.user) {
+                showAlert("Vui lòng đăng nhập để có thể Import dữ liệu Excel.", true);
+                return;
+            }
+            if (state.user.role === 'Viewer') {
+                showAlert("Tài khoản của bạn chỉ có quyền xem, không được phép Import dữ liệu.", true);
+                return;
+            }
+            document.getElementById('import-modal').classList.remove('hidden');
+        }
+
+        function openDetailsModal(sampleId, compId = null) {
+            const sample = samplesData.find(s => s.id === sampleId); if (!sample) return;
+            
+            document.getElementById('details-code').innerHTML = `${sample.code} <span class="ml-3 inline-flex items-center px-2.5 py-1 rounded-lg text-sm font-extrabold bg-indigo-50 text-indigo-600 border border-indigo-100 align-middle shadow-sm"><i class="fa-regular fa-calendar-days mr-1.5 opacity-70"></i> WK: ${formatWeekShort(sample.week)}</span>`;
+            
+            const fgHistoryContainer = document.getElementById('details-fg-history');
+            if (fgHistoryContainer && !compId && sample.issueHistory && sample.issueHistory.length > 0) {
+                let fgHistHTML = `<div class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm"><button onclick="document.getElementById('fg-hist-list').classList.toggle('hidden')" class="flex items-center text-xs font-extrabold text-slate-500 hover:text-indigo-600 uppercase tracking-widest transition-colors focus:outline-none"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Show / Hide FG History Log</button><div id="fg-hist-list" class="space-y-2 mt-4 hidden max-h-48 overflow-y-auto pr-1">`;
+                sample.issueHistory.forEach(h => { 
+                    let colorClass = '', bgClass = '', borderClass = '', icon = '', textClass = '';
+                    if (h.action === 'Reported') {
+                        colorClass = 'text-rose-600'; bgClass = 'bg-rose-50/50'; borderClass = 'border-rose-100'; icon = 'fa-triangle-exclamation'; textClass = 'text-rose-400';
+                    } else if (h.action === 'DeadlineUpdate') {
+                        colorClass = 'text-indigo-600'; bgClass = 'bg-indigo-50/50'; borderClass = 'border-indigo-100'; icon = 'fa-calendar-day'; textClass = 'text-indigo-400';
+                    } else {
+                        colorClass = 'text-emerald-600'; bgClass = 'bg-emerald-50/50'; borderClass = 'border-emerald-100'; icon = 'fa-check-circle'; textClass = 'text-emerald-500';
+                    }
+                    fgHistHTML += `<div class="flex items-start text-xs ${colorClass} ${bgClass} ${borderClass} p-3 rounded-xl border"><i class="fa-solid ${icon} mt-0.5 mr-2"></i><div class="flex-1"><div class="font-bold">${h.text}</div><div class="text-[10px] ${textClass} font-medium mt-1 flex justify-between items-center"><span><i class="fa-regular fa-clock mr-1"></i> ${h.date}</span><span class="bg-white/50 px-1.5 py-0.5 rounded shadow-sm"><i class="fa-regular fa-user mr-1"></i> ${h.user}</span></div></div></div>`; 
+                });
+                fgHistHTML += `</div></div>`; fgHistoryContainer.innerHTML = fgHistHTML; fgHistoryContainer.classList.remove('hidden');
+            } else if (fgHistoryContainer) { fgHistoryContainer.classList.add('hidden'); fgHistoryContainer.innerHTML = ''; }
+
+            let compsToRender = [];
+            let isLaminationDetail = false;
+
+            if (compId && compId.startsWith('LAM::')) { 
+                const lamId = compId.split('::')[1]; 
+                const lam = sample.laminations.find(l => l.id === lamId); 
+                document.getElementById('details-product').innerHTML = `<span class="text-slate-400">${sample.product}</span> <i class="fa-solid fa-chevron-right text-[10px] mx-2 text-slate-300"></i> <span class="font-bold text-indigo-600">[Lamination] ${lam.desc || lam.mrp}</span>`; 
+                compsToRender = [lam]; 
+                isLaminationDetail = true; 
+            } else if (compId) { 
+                const comp = sample.components.find(c => c.id === compId); 
+                document.getElementById('details-product').innerHTML = `<span class="text-slate-400">${sample.product}</span> <i class="fa-solid fa-chevron-right text-[10px] mx-2 text-slate-300"></i> <span class="font-bold text-indigo-600">${comp.name}</span>`; 
+                compsToRender = [comp]; 
+            } else { 
+                compsToRender = sample.components ? [...sample.components] : [];
+                let totalComps = compsToRender.length;
+                let completedComps = compsToRender.filter(c => c.status === 'Completed').length;
+                
+                document.getElementById('details-product').innerHTML = `
+                    <span class="text-slate-500 mr-3">${sample.product}</span>
+                    <span class="inline-flex items-center px-2 py-1 rounded text-[11px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-100 shadow-sm tracking-wide">
+                        <i class="fa-solid fa-list-check mr-1.5 opacity-70"></i> Hoàn thành: ${completedComps}/${totalComps}
+                    </span>`; 
+            }
+
+            compsToRender.sort((a, b) => {
+                const aComplete = isLaminationDetail ? a.done : (a.status === 'Completed');
+                const bComplete = isLaminationDetail ? b.done : (b.status === 'Completed');
+                if (aComplete === bComplete) return 0;
+                return aComplete ? 1 : -1; 
+            });
+
+            const componentsContainer = document.getElementById('details-components'); 
+            componentsContainer.innerHTML = '';
+            
+            if (compsToRender.length === 0) { 
+                componentsContainer.innerHTML = `<div class="text-center p-6 bg-white rounded-2xl border border-slate-100"><i class="fa-solid fa-shapes text-slate-300 text-3xl mb-3"></i><p class="text-slate-500 text-sm font-medium">No component breakdown available.</p></div>`; 
+            } else {
+                compsToRender.forEach((comp) => {
+                    let compHasIssue = !!comp.issue;
+                    let cardBgClass = compHasIssue ? 'bg-rose-50/50 border-rose-200' : 'bg-white border-slate-100/80';
+                    let titleColorClass = compHasIssue ? 'text-rose-700' : 'text-slate-800';
+                    let iconColorClass = compHasIssue ? 'text-rose-500' : 'text-indigo-400';
+                    let compNameDisplay = isLaminationDetail ? `[Lamination] ${comp.desc || comp.mrp}` : comp.name;
+                    
+                    const displayStages = comp.stages ? comp.stages.filter(s => s.name !== 'Lamination') : [];
+                    
+                    let stagesHTML = isLaminationDetail 
+                        ? (comp.done ? `<span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100 shadow-sm"><i class="fa-solid fa-check mr-1.5"></i> Lamination</span>` : `<span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-50 text-slate-400 text-xs font-bold border border-slate-200/60"><i class="fa-regular fa-clock mr-1.5"></i> Lamination</span>`) 
+                        : displayStages.map(stage => stage.done ? `<span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-600 text-xs font-bold border border-emerald-100 shadow-sm"><i class="fa-solid fa-check mr-1.5"></i> ${stage.name}</span>` : `<span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-slate-50 text-slate-400 text-xs font-bold border border-slate-200/60"><i class="fa-regular fa-clock mr-1.5"></i> ${stage.name}</span>`).join('<i class="fa-solid fa-arrow-right-long text-slate-300 text-sm mx-1.5"></i>');
+                    
+                    let issueMarkup = compHasIssue ? `<div class="mt-4 p-3 bg-rose-100/50 rounded-xl text-xs text-rose-600 font-bold flex items-start"><i class="fa-solid fa-circle-exclamation mt-0.5 mr-2"></i> <div>${comp.issue} ${comp.issueQty ? `<span class="opacity-75 ml-1">(SL: ${comp.issueQty})</span>` : ''} ${comp.issueDate ? `<div class="text-[10px] text-rose-400 font-medium mt-1"><i class="fa-regular fa-clock mr-1"></i> ${comp.issueDate}</div>` : ''}</div></div>` : '';
+                    let historyMarkup = generateHistoryHTML(comp.issueHistory, comp.id);
+                    let statusBadge = isLaminationDetail 
+                        ? (comp.done ? '<span class="text-xs font-bold px-2 py-1 rounded-md bg-emerald-50 text-emerald-600">Completed</span>' : '<span class="text-xs font-bold px-2 py-1 rounded-md bg-indigo-50 text-indigo-600">In Progress</span>') 
+                        : `<span class="text-xs font-bold px-2 py-1 rounded-md ${comp.status === 'Completed' ? 'bg-emerald-50 text-emerald-600' : (comp.status === 'In Progress' ? 'bg-indigo-50 text-indigo-600' : 'bg-slate-100 text-slate-500')}">${comp.status}</span>`;
+                    
+                    componentsContainer.innerHTML += `<div class="${cardBgClass} border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow"><div class="flex justify-between items-center mb-4 border-b ${compHasIssue ? 'border-rose-100' : 'border-slate-50'} pb-3"><h4 class="font-extrabold ${titleColorClass} text-sm flex items-center"><i class="fa-solid fa-puzzle-piece ${iconColorClass} mr-2"></i> ${compNameDisplay}</h4>${statusBadge}</div><div class="flex flex-wrap items-center gap-2">${stagesHTML}</div>${issueMarkup}${historyMarkup}</div>`;
+                });
+            }
+            detailsModal.classList.remove('hidden');
+        }
+
+        // --- IMPORT EXCEL LOGIC ---
+        function handleExcelUpload(e) {
+            const file = e.target.files[0];
+            if(!file) return;
+
+            document.getElementById('import-loading').classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    
+                    let newSamplesMap = {};
+                    const nowStr = new Date().toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    const batchId = 'BATCH-' + Math.floor(100000 + Math.random() * 900000);
+
+                    workbook.SheetNames.forEach(sheetName => {
+                        const sheet = workbook.Sheets[sheetName];
+                        const rows = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: ''});
+                        if(rows.length <= 1) return; 
+                        
+                        let headerRowIndex = -1, map = {};
+                        for (let r = 0; r < Math.min(rows.length, 15); r++) {
+                            const tempHeaders = rows[r].map(h => String(h || '').trim().toUpperCase());
+                            if (tempHeaders.includes('FG ITEMS') || tempHeaders.includes('FG ITEM') || tempHeaders.includes('DESC') || tempHeaders.includes('DRAWING') || tempHeaders.includes('WEEK')) {
+                                headerRowIndex = r; tempHeaders.forEach((h, i) => { if (h) map[h] = i; }); break;
+                            }
+                        }
+                        if (headerRowIndex === -1) return; 
+
+                        const getVal = (r, idx) => r[idx] !== undefined && r[idx] !== null && r[idx] !== '' ? String(r[idx]).trim() : '';
+                        const getSafeVal = (r, keys, defaultVal = '--') => {
+                            const keyArr = Array.isArray(keys) ? keys : [keys];
+                            for (let k of keyArr) { if (map[k] !== undefined) { const val = getVal(r, map[k]); if (val !== '') return val; } }
+                            return defaultVal;
+                        };
+
+                        let currentFgItem = ''; 
+                        let currentWeek = ''; 
+                        for(let i = headerRowIndex + 1; i < rows.length; i++) {
+                            const row = rows[i];
+                            
+                            let rawWeek = getSafeVal(row, ['WEEK', 'WK', 'TUẦN', 'W'], '');
+                            if (rawWeek && rawWeek !== '--') currentWeek = rawWeek;
+
+                            let rawFgItem = getSafeVal(row, ['FG ITEMS', 'FG ITEM'], '');
+                            if (rawFgItem && rawFgItem !== '--') currentFgItem = rawFgItem;
+                            
+                            if (!currentFgItem) continue;
+
+                            const desc = getSafeVal(row, 'DESC', '');
+                            const drawing = getSafeVal(row, 'DRAWING', '--');
+                            const qty = getSafeVal(row, 'QTY', '');
+
+                            if ((!desc || desc === '--') && (!qty || qty === '--')) continue; 
+
+                            let finalWeek = currentWeek || 'W-??';
+                            const sampleKey = finalWeek + '::' + currentFgItem;
+
+                            if (!newSamplesMap[sampleKey]) {
+                                const safeWeekForId = finalWeek.replace(/\s+/g, '').toUpperCase() || 'WEEK';
+                                const parsedDeadline = getSafeVal(row, ['DEADLINE', 'DEADLINE DATE', 'NGÀY XUẤT'], '');
+                                
+                                newSamplesMap[sampleKey] = {
+                                    id: `${safeWeekForId}-IMP${Math.floor(10000 + Math.random() * 90000)}`,
+                                    code: currentFgItem, 
+                                    week: finalWeek, 
+                                    product: currentFgItem, 
+                                    currentStage: 'Pending', 
+                                    deadline: parsedDeadline !== '--' ? parsedDeadline : '', 
+                                    importedAt: nowStr,
+                                    importedBy: state.user ? state.user.username : 'Guest', 
+                                    issue: '', 
+                                    issueHistory: [], 
+                                    components: [], 
+                                    laminations: [],
+                                    assembled: false
+                                };
+                            }
+
+                            const sample = newSamplesMap[sampleKey];
+                            const isLamRow = drawing === '--' || desc.toLowerCase().includes('lamination');
+
+                            if (isLamRow) {
+                                const lMrp = getSafeVal(row, 'MRP', '');
+                                sample.laminations.push({
+                                    id: 'LAM-' + Math.floor(10000 + Math.random() * 90000), mrp: lMrp !== '--' ? lMrp : '', desc: desc !== '--' ? desc : '',
+                                    thickness: getSafeVal(row, 'THICKNESS', ''), qty: qty !== '' ? qty : '1', note: getSafeVal(row, 'NOTE', ''),
+                                    done: false, issue: '', issueHistory: []
+                                });
+                            } else {
+                                let stages = [];
+                                STAGES.forEach(stageName => {
+                                    const stageUpper = stageName.toUpperCase();
+                                    if (map[stageUpper] !== undefined) {
+                                        const cellVal = getVal(row, map[stageUpper]);
+                                        if (cellVal && String(cellVal).toLowerCase() !== 'false' && String(cellVal).trim() !== '') stages.push({ name: stageName, done: false });
+                                    } 
+                                });
+                                
+                                const l = getSafeVal(row, 'LENGTH', '0'), w = getSafeVal(row, 'WIDTH', '0'), h = getSafeVal(row, 'HEIGHT', '0');
+                                sample.components.push({
+                                    id: 'C-IMP' + Math.floor(10000 + Math.random() * 90000), name: desc !== '--' ? desc : 'No Name', drawing: drawing,
+                                    qty: qty !== '' ? qty : '1', mrp: getSafeVal(row, 'MRP', '--'), thickness: getSafeVal(row, 'THICKNESS', '--'),
+                                    dimensions: (l!=='0' && l!=='--') ? `${l}x${w}x${h}` : '--', ebFoil: getSafeVal(row, ['EBAND/FOIL', 'EB/FOIL'], '--'),               
+                                    note: getSafeVal(row, 'NOTE', ''), color: getSafeVal(row, 'COLOR', '--'), eb: getSafeVal(row, 'EB', '--'), ebNumber: getSafeVal(row, ['EB#', 'EB NUMBER', 'EB NO'], '--'),
+                                    foil: getSafeVal(row, 'FOIL', '--'), foilNumber: getSafeVal(row, ['FOIL#', 'FOIL NUMBER', 'FOIL NO'], '--'), profile: getSafeVal(row, ['PROFILE', 'PROFILE MTR'], '--'), 
+                                    status: 'Pending', stages: stages, issue: '', issueHistory: []
+                                });
+                                if(sample.currentStage === 'Pending' && stages.length > 0) sample.currentStage = stages[0].name;
+                            }
+                        }
+                    });
+
+                    let importedIds = [];
+                    const validSamples = [];
+
+                    Object.keys(newSamplesMap).forEach((key, index) => {
+                        const newSample = newSamplesMap[key];
+                        
+                        if (newSample.laminations.length === 0) {
+                            newSample.components.forEach(c => {
+                                const lamStage = c.stages.find(s => s.name === 'Lamination');
+                                if (lamStage) lamStage.done = true; 
+                            });
+                        }
+
+                        if (newSample.components.length > 0 || newSample.laminations.length > 0) {
+                            newSample.timestamp = Date.now() + index; 
+                            importedIds.push(newSample.id);
+                            validSamples.push(newSample);
+                        }
+                    });
+
+                    if(importedIds.length > 0) {
+                        const histDoc = {
+                            batchId: batchId,
+                            time: nowStr,
+                            timestamp: Date.now(),
+                            expiresAt: Date.now() + (30 * 60 * 1000), 
+                            user: state.user ? state.user.username : 'Guest',
+                            items: importedIds,
+                            status: 'Active',
+                            notifiedExpired: false 
+                        };
+
+                        // Nếu là Offline mode, chỉ lưu vào bộ nhớ tạm
+                        if (!useCloud) {
+                            importHistory.unshift(histDoc);
+                            validSamples.forEach(s => samplesData.push(s));
+                            
+                            document.getElementById('import-modal').classList.add('hidden');
+                            showAlert(`Đã Import thành công ${importedIds.length} mã (Chế độ Offline)`, false);
+                            document.getElementById('notification-dropdown').classList.remove('hidden');
+                            setFilter('All');
+                        } 
+                        // Môi trường có Cloud, đẩy lên server
+                        else {
+                            updateCloudStatus('syncing');
+                            await saveHistoryToCloud(histDoc);
+                            const pushPromises = validSamples.map(sample => saveSampleToCloud(sample));
+                            await Promise.all(pushPromises);
+                            updateCloudStatus('synced');
+                            
+                            document.getElementById('import-modal').classList.add('hidden');
+                            showAlert(`Đã tiếp nhận thành công ${importedIds.length} mã FG Items và Đồng bộ lên Cloud!`, false);
+                            
+                            document.getElementById('notification-dropdown').classList.remove('hidden');
+                            setFilter('All');
+                        }
+                        
+                    } else {
+                        showAlert("Không tìm thấy dữ liệu hợp lệ trong file Excel.", true);
+                    }
+                } catch(error) {
+                    console.error("Excel Parsing Error:", error);
+                    showAlert("Có lỗi xảy ra khi đọc file. Vui lòng kiểm tra định dạng.", true);
+                    updateCloudStatus('error');
+                } finally {
+                    document.getElementById('import-loading').classList.add('hidden');
+                    e.target.value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function showAlert(msg, isError = false) {
+            document.getElementById('alert-message').innerText = msg; document.getElementById('alert-title').innerText = isError ? 'Thông báo' : 'Thành công';
+            const iconEl = document.getElementById('alert-icon'), iconContainer = iconEl.parentElement;
+            if (isError) { iconEl.className = 'fa-solid fa-xmark text-3xl'; iconContainer.className = 'w-20 h-20 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6 text-rose-500 border-4 border-white shadow-[0_0_0_4px_rgba(244,63,94,0.1)]'; } 
+            else { iconEl.className = 'fa-solid fa-check text-3xl'; iconContainer.className = 'w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6 text-emerald-500 border-4 border-white shadow-[0_0_0_4px_rgba(16,185,129,0.1)]'; }
+            alertModal.classList.remove('hidden');
+        }
+        function closeAlert() { alertModal.classList.add('hidden'); }
+
+        function setupModalCloseEvents() {
+            const modals = [
+                { id: 'import-modal', closeFn: () => document.getElementById('import-modal').classList.add('hidden') },
+                { id: 'details-modal', closeFn: () => document.getElementById('details-modal').classList.add('hidden') },
+                { id: 'login-modal', closeFn: () => document.getElementById('login-modal').classList.add('hidden') },
+                { id: 'edit-modal', closeFn: () => document.getElementById('edit-modal').classList.add('hidden') },
+                { id: 'deadline-hist-modal', closeFn: () => document.getElementById('deadline-hist-modal').classList.add('hidden') },
+                { id: 'confirm-modal', closeFn: closeConfirmModal },
+                { id: 'alert-modal', closeFn: closeAlert }
+            ];
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') modals.forEach(m => { const el = document.getElementById(m.id); if (el && !el.classList.contains('hidden')) m.closeFn(); }); });
+            modals.forEach(m => { const el = document.getElementById(m.id); if (el) el.addEventListener('mousedown', (e) => { if (e.target === el) m.closeFn(); }); });
+            
+            document.addEventListener('click', (e) => {
+                const notifWrapper = document.getElementById('notification-wrapper');
+                const notifDropdown = document.getElementById('notification-dropdown');
+                if (notifWrapper && notifDropdown && !notifWrapper.contains(e.target)) {
+                    notifDropdown.classList.add('hidden');
+                }
+            });
+        }
+
+        function setupEventListeners() {
+            document.getElementById('search-input').addEventListener('input', (e) => { state.searchQuery = e.target.value; refreshUI(); });
+            
+            document.getElementById('btn-login-trigger').addEventListener('click', () => {
+                loginModal.classList.remove('hidden');
+                setTimeout(() => document.getElementById('login-username').focus(), 100);
+            });
+            
+            document.getElementById('btn-close-login').addEventListener('click', () => loginModal.classList.add('hidden'));
+            document.getElementById('btn-submit-login').addEventListener('click', handleLogin);
+            
+            document.querySelectorAll('.close-details-modal').forEach(btn => { btn.addEventListener('click', () => detailsModal.classList.add('hidden')); });
+            document.querySelectorAll('.close-edit-modal').forEach(btn => { btn.addEventListener('click', () => editModal.classList.add('hidden')); });
+            
+            document.getElementById('btn-save-edit').addEventListener('click', () => saveEdit(false));
+            document.getElementById('btn-clear-edit').addEventListener('click', () => saveEdit(true));
+            document.getElementById('excel-file-input').addEventListener('change', handleExcelUpload);
+        }
+
+        window.exportExcel = exportExcel;
+        window.openImportModal = openImportModal;
+        window.toggleNotifications = toggleNotifications;
+        window.toggleLogoutMenu = toggleLogoutMenu;
+        window.handleLogout = handleLogout;
+        window.attemptBulkIssue = attemptBulkIssue;
+        window.attemptBulkComplete = attemptBulkComplete;
+        window.setFilter = setFilter;
+        window.toggleSort = toggleSort;
+        window.toggleSelectAll = toggleSelectAll;
+        window.toggleRowSelection = toggleRowSelection;
+        window.updateSampleNote = updateSampleNote;
+        window.updateLaminationNote = updateLaminationNote;
+        window.updateComponentNote = updateComponentNote;
+        window.attemptCompleteLamination = attemptCompleteLamination;
+        window.attemptEdit = attemptEdit;
+        window.attemptAssemble = attemptAssemble;
+        window.attemptCompleteStage = attemptCompleteStage;
+        window.checkPermissionAndFocus = checkPermissionAndFocus;
+        window.updateDeadline = updateDeadline;
+        window.showDeadlineHist = showDeadlineHist;
+        window.attemptRevoke = attemptRevoke;
+        window.closeConfirmModal = closeConfirmModal;
+        window.closeAlert = closeAlert;
+        window.handleExcelUpload = handleExcelUpload;
+
+        function init() {
+            renderSidebar();
+            renderDashboard();
+            renderNotifications();
+            setupEventListeners();
+            setupModalCloseEvents();
+            checkAuthUI();
+            
+            if(timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateLiveTimers, 1000);
+
+            initFirebaseAuth();
+        }
+
+        init();
+    </script>
+</body>
+</html>
